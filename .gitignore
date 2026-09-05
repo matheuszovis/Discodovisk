@@ -1,0 +1,9 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+atlas-credentials.env
+
+# Dependencies and generated files
+node_modules/
+frontend/build/
