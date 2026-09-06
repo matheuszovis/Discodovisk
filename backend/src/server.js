@@ -110,7 +110,7 @@ const startServer = async () => {
 
     // Sem host explícito, o Node aceita conexões IPv4 e IPv6. Isso permite
     // que navegadores que resolvem localhost como ::1 acessem a API.
-    server.listen(PORT, () => {
+    server.listen(PORT, '0.0.0.0', () => {
       console.log('');
       console.log('🚀 ========================================');
       console.log('   Discordovisk Server está rodando!');
