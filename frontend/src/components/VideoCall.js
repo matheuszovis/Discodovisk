@@ -466,6 +466,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   };
 
   const handleUserJoined = ({ userId, username, avatar }) => {
+    playCallJoinSound();
     setParticipants(prev => {
       const exists = prev.find(participant => participant.userId === userId);
       if (exists) {
@@ -483,6 +484,27 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         isVideoOff: true
       }];
     });
+  };
+
+  const playCallJoinSound = () => {
+    const audioContext = new AudioContext();
+    const now = audioContext.currentTime;
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+    gain.connect(audioContext.destination);
+
+    [659.25, 783.99].forEach((frequency, index) => {
+      const oscillator = audioContext.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      oscillator.connect(gain);
+      oscillator.start(now + index * 0.08);
+      oscillator.stop(now + 0.45);
+    });
+
+    window.setTimeout(() => audioContext.close(), 600);
   };
 
   const handleUserLeft = ({ userId }) => {
