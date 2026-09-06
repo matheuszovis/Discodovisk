@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "description": "Frontend do Discordovisk - Interface de usuário",
   "private": true,
+  "homepage": ".",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:icon": "node scripts/create-icon.js",
+    "electron:start": "npm run build && electron electron/main.js",
+    "dist": "npm run build && npm run build:icon && electron-builder --win nsis",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -17,6 +21,39 @@
     "react-scripts": "5.0.1",
     "simple-peer": "^9.11.1",
     "socket.io-client": "^4.6.1"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^2.1.8"
+  },
+  "main": "electron/main.js",
+  "build": {
+    "extends": null,
+    "appId": "com.discordovisk.app",
+    "productName": "Discordovisk",
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "files": [
+      "build/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/ico.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "directories": {
+      "output": "dist"
+    }
   },
   "eslintConfig": {
     "extends": [

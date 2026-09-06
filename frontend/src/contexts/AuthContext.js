@@ -90,7 +90,9 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       return {
         success: false,
-        message: error.response?.data?.error || 'Erro ao fazer login'
+        message: error.code === 'ECONNABORTED'
+          ? 'O servidor está iniciando. Aguarde até 90 segundos e tente novamente.'
+          : error.response?.data?.error || 'Não foi possível conectar ao servidor.'
       };
     }
   };
