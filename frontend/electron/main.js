@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, desktopCapturer, session } = require('electron');
 const path = require('path');
 
 const createWindow = () => {
@@ -27,6 +27,24 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 1, height: 1 }
+      });
+
+      if (sources.length > 0) {
+        callback({ video: sources[0] });
+      } else {
+        callback({});
+      }
+    } catch (error) {
+      console.error('Erro ao autorizar compartilhamento de tela:', error);
+      callback({});
+    }
+  }, { useSystemPicker: true });
+
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
