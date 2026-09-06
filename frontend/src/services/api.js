@@ -5,7 +5,7 @@ import axios from 'axios';
  * Axios é uma biblioteca que facilita fazer requisições para o backend
  */
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || `${window.location.protocol}//${window.location.hostname}:5000/api`,
+  baseURL: process.env.REACT_APP_API_URL || 'https://discodovisk-backend.onrender.com/api',
   headers: {
     'Content-Type': 'application/json'
   }

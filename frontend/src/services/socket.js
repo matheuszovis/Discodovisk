@@ -10,7 +10,7 @@ export const connectSocket = (token) => {
     return socket;
   }
 
-  const socketUrl = process.env.REACT_APP_SOCKET_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+  const socketUrl = process.env.REACT_APP_SOCKET_URL || 'https://discodovisk-backend.onrender.com';
   socket = io(socketUrl, {
     auth: {
       token
