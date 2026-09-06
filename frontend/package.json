@@ -8,8 +8,9 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "build:icon": "node scripts/create-icon.js",
+    "apply:icon": "node scripts/apply-icon.js",
     "electron:start": "npm run build && electron electron/main.js",
-    "dist": "npm run build && npm run build:icon && electron-builder --win nsis",
+    "dist": "npm run build && npm run build:icon && electron-builder --dir && npm run apply:icon && electron-builder --prepackaged dist/win-unpacked --win nsis --publish never",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -25,7 +26,8 @@
   "devDependencies": {
     "electron": "^31.7.7",
     "electron-builder": "^25.1.8",
-    "png-to-ico": "^2.1.8"
+    "png-to-ico": "^2.1.8",
+    "rcedit": "^5.0.2"
   },
   "main": "electron/main.js",
   "build": {
