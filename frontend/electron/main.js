@@ -9,11 +9,14 @@ const createWindow = () => {
     minHeight: 700,
     backgroundColor: '#202225',
     icon: path.join(__dirname, '..', 'build', 'ico.ico'),
+    autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false
     }
   });
+
+  window.removeMenu();
 
   window.loadFile(path.join(__dirname, '..', 'build', 'index.html'));
 
