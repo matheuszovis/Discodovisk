@@ -1,6 +1,6 @@
 {
   "name": "discordovisk-frontend",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Frontend do Discordovisk - Interface de usuário",
   "private": true,
   "homepage": ".",
@@ -50,8 +50,12 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "artifactName": "Discordovisk-Setup-${version}.${ext}"
     },
     "directories": {
       "output": "dist"

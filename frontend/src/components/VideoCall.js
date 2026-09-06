@@ -16,6 +16,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const [participants, setParticipants] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState({});
   const [expandedParticipantId, setExpandedParticipantId] = useState(null);
+  const [screenSources, setScreenSources] = useState([]);
   
   const { user } = useAuth();
   const localVideoRef = useRef(null);
@@ -304,12 +305,31 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     } else {
       // Inicia o compartilhamento de tela
       try {
+        if (window.electronAPI?.getScreenSources) {
+          const sources = await window.electronAPI.getScreenSources();
+          if (!sources.length) {
+            alert('Nenhuma tela ou janela disponível para compartilhar.');
+            return;
+          }
+          setScreenSources(sources);
+          return;
+        }
+
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: 'always'
-          },
+          video: { cursor: 'always' },
           audio: false
         });
+
+        startScreenShare(screenStream);
+      } catch (error) {
+        console.error('Erro ao compartilhar tela:', error);
+        alert('Erro ao compartilhar tela. Verifique as permissões.');
+      }
+    }
+  };
+
+  const startScreenShare = (screenStream) => {
+    try {
 
         screenStreamRef.current = screenStream;
 
@@ -339,10 +359,29 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
           }
         });
 
-      } catch (error) {
-        console.error('Erro ao compartilhar tela:', error);
-        alert('Erro ao compartilhar tela. Verifique as permissões.');
-      }
+    } catch (error) {
+      console.error('Erro ao iniciar compartilhamento:', error);
+      alert('Não foi possível iniciar o compartilhamento.');
+    }
+  };
+
+  const selectScreenSource = async (source) => {
+    try {
+      const screenStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: source.id,
+            maxFrameRate: 30
+          }
+        }
+      });
+      setScreenSources([]);
+      startScreenShare(screenStream);
+    } catch (error) {
+      console.error('Erro ao capturar a fonte escolhida:', error);
+      alert('Não foi possível compartilhar essa tela ou janela.');
     }
   };
 
@@ -599,6 +638,30 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                 />
               ))}
             </div>
+
+            {screenSources.length > 0 && (
+              <div className="screen-source-overlay">
+                <div className="screen-source-dialog">
+                  <div className="screen-source-header">
+                    <h2>Escolha o que compartilhar</h2>
+                    <button type="button" onClick={() => setScreenSources([])} title="Cancelar">✕</button>
+                  </div>
+                  <div className="screen-source-grid">
+                    {screenSources.map((source) => (
+                      <button
+                        type="button"
+                        className="screen-source-option"
+                        key={source.id}
+                        onClick={() => selectScreenSource(source)}
+                      >
+                        <img src={source.thumbnail} alt="" />
+                        <span>{source.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Controles da chamada */}
             <div className="call-controls">

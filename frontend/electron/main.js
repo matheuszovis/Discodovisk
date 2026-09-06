@@ -1,5 +1,19 @@
-const { app, BrowserWindow, shell, desktopCapturer, session } = require('electron');
+const { app, BrowserWindow, shell, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
+
+ipcMain.handle('screen-sources:list', async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    thumbnailSize: { width: 240, height: 135 },
+    fetchWindowIcons: true
+  });
+
+  return sources.map((source) => ({
+    id: source.id,
+    name: source.name,
+    thumbnail: source.thumbnail.toDataURL()
+  }));
+});
 
 const createWindow = () => {
   const window = new BrowserWindow({
@@ -12,7 +26,8 @@ const createWindow = () => {
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js')
     }
   });
 
@@ -27,24 +42,6 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
-  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
-    try {
-      const sources = await desktopCapturer.getSources({
-        types: ['screen', 'window'],
-        thumbnailSize: { width: 1, height: 1 }
-      });
-
-      if (sources.length > 0) {
-        callback({ video: sources[0] });
-      } else {
-        callback({});
-      }
-    } catch (error) {
-      console.error('Erro ao autorizar compartilhamento de tela:', error);
-      callback({});
-    }
-  }, { useSystemPicker: true });
-
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
