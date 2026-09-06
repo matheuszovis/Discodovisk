@@ -15,9 +15,13 @@ const dmRoutes = require('./routes/dm');
 
 const app = express();
 const server = http.createServer(app);
-const frontendOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+const frontendOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3001')
   .split(',')
   .map((origin) => origin.trim());
+
+const isAllowedOrigin = (origin) => !origin
+  || frontendOrigins.includes(origin)
+  || origin === 'null';
 
 /**
  * Configuração do Socket.io
@@ -25,7 +29,7 @@ const frontendOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
  */
 const io = new Server(server, {
   cors: {
-    origin: frontendOrigins,
+    origin: isAllowedOrigin,
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -35,7 +39,7 @@ const io = new Server(server, {
  * Middlewares
  */
 app.use(cors({
-  origin: frontendOrigins,
+  origin: isAllowedOrigin,
   credentials: true
 }));
 
