@@ -15,9 +15,13 @@ const dmRoutes = require('./routes/dm');
 
 const app = express();
 const server = http.createServer(app);
-const frontendOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3001')
+const configuredOrigins = (process.env.FRONTEND_URL || '')
   .split(',')
-  .map((origin) => origin.trim());
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const frontendOrigins = [
+  ...new Set([...configuredOrigins, 'http://localhost:3000', 'http://localhost:3001'])
+];
 
 const isAllowedOrigin = (origin) => !origin
   || frontendOrigins.includes(origin)
