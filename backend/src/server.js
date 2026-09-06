@@ -23,9 +23,12 @@ const frontendOrigins = [
   ...new Set([...configuredOrigins, 'http://localhost:3000', 'http://localhost:3001'])
 ];
 
-const isAllowedOrigin = (origin) => !origin
-  || frontendOrigins.includes(origin)
-  || origin === 'null';
+const isAllowedOrigin = (origin, callback) => {
+  const allowed = !origin
+    || frontendOrigins.includes(origin)
+    || origin === 'null';
+  callback(null, allowed);
+};
 
 /**
  * Configuração do Socket.io
