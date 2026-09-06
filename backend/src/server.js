@@ -100,17 +100,11 @@ setupSocket(io);
 const PORT = process.env.PORT || 5000;
 
 /**
- * Inicia o servidor somente depois que o banco estiver disponível.
- * Assim, requisições de login nunca chegam a uma API sem banco conectado.
+ * Abre a porta antes da conexão com o banco para o Render detectar o serviço.
  */
 const startServer = async () => {
-  try {
-    await connectDB();
-    await ensureDefaultAdmin();
-
-    // Sem host explícito, o Node aceita conexões IPv4 e IPv6. Isso permite
-    // que navegadores que resolvem localhost como ::1 acessem a API.
-    server.listen(PORT, '0.0.0.0', () => {
+  server.listen(PORT, '0.0.0.0', async () => {
+    try {
       console.log('');
       console.log('🚀 ========================================');
       console.log('   Discordovisk Server está rodando!');
@@ -119,10 +113,12 @@ const startServer = async () => {
       console.log(`   URL local: http://localhost:${PORT}`);
       console.log('🚀 ========================================');
       console.log('');
-    });
-  } catch {
-    process.exit(1);
-  }
+      await connectDB();
+      await ensureDefaultAdmin();
+    } catch {
+      process.exit(1);
+    }
+  });
 };
 
 startServer();
