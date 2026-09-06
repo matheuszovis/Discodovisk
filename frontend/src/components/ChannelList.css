@@ -6,6 +6,9 @@
 }
 
 .server-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 16px;
   border-bottom: 1px solid #202225;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
@@ -22,6 +25,31 @@
 
 .server-header h3:hover {
   color: #dcddde;
+}
+
+.btn-server-icon {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #b9bbbe;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.btn-server-icon:hover:not(:disabled) {
+  background: #393c43;
+  color: #fff;
+}
+
+.btn-server-icon:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.server-icon-input {
+  display: none;
 }
 
 .channels-container {

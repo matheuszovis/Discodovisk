@@ -6,7 +6,7 @@ import './ServerList.css';
 /**
  * Componente que exibe a lista de servidores do usuário
  */
-function ServerList({ selectedServer, onSelectServer }) {
+function ServerList({ selectedServer, onSelectServer, updatedServer }) {
   const [servers, setServers] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -19,6 +19,13 @@ function ServerList({ selectedServer, onSelectServer }) {
   useEffect(() => {
     loadServers();
   }, []);
+
+  useEffect(() => {
+    if (!updatedServer) return;
+    setServers((currentServers) => currentServers.map((server) => (
+      server._id === updatedServer._id ? updatedServer : server
+    )));
+  }, [updatedServer]);
 
   const loadServers = async () => {
     try {

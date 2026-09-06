@@ -31,6 +31,10 @@ function Home() {
     setCallChannel(channel);
   };
 
+  const handleServerUpdated = (updatedServer) => {
+    setSelectedServer(updatedServer);
+  };
+
   const handleOpenProfileSettings = () => {
     setAvatarUrl(user?.avatar || '');
     setProfileError('');
@@ -105,6 +109,7 @@ function Home() {
       <ServerList 
         selectedServer={selectedServer}
         onSelectServer={setSelectedServer}
+        updatedServer={selectedServer}
       />
 
       {/* Lista de canais do servidor selecionado */}
@@ -114,6 +119,7 @@ function Home() {
           selectedChannel={selectedChannel}
           onSelectChannel={handleSelectChannel}
           onOpenCall={handleOpenCall}
+          onServerUpdated={handleServerUpdated}
           activeCallChannel={callChannel}
           activeCallParticipants={activeCallParticipants}
         />

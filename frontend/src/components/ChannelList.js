@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import './ChannelList.css';
@@ -12,7 +12,8 @@ function ChannelList({
   onSelectChannel,
   onOpenCall,
   activeCallChannel,
-  activeCallParticipants
+  activeCallParticipants,
+  onServerUpdated
 }) {
   const [channels, setChannels] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -20,6 +21,60 @@ function ChannelList({
   const [channelType, setChannelType] = useState('text');
   const [loading, setLoading] = useState(false);
   const [voiceParticipants, setVoiceParticipants] = useState({});
+  const [savingServerIcon, setSavingServerIcon] = useState(false);
+  const serverIconInputRef = useRef(null);
+
+  const handleServerIconChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Escolha um arquivo de imagem.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('A imagem deve ter no máximo 5 MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const size = 256;
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext('2d');
+        const cropSize = Math.min(image.width, image.height);
+        context.drawImage(
+          image,
+          (image.width - cropSize) / 2,
+          (image.height - cropSize) / 2,
+          cropSize,
+          cropSize,
+          0,
+          0,
+          size,
+          size
+        );
+
+        setSavingServerIcon(true);
+        try {
+          const response = await api.put(`/servers/${server._id}`, {
+            icon: canvas.toDataURL('image/jpeg', 0.82)
+          });
+          onServerUpdated?.(response.data.server);
+        } catch (error) {
+          alert(error.response?.data?.error || 'Não foi possível salvar a foto do servidor.');
+        } finally {
+          setSavingServerIcon(false);
+          event.target.value = '';
+        }
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
 
   useEffect(() => {
     if (server) {
@@ -174,6 +229,22 @@ function ChannelList({
     <div className="channel-list">
       <div className="server-header">
         <h3>{server?.name}</h3>
+        <button
+          type="button"
+          className="btn-server-icon"
+          onClick={() => serverIconInputRef.current?.click()}
+          disabled={savingServerIcon}
+          title="Alterar foto do servidor"
+        >
+          {savingServerIcon ? '...' : '🖼️'}
+        </button>
+        <input
+          ref={serverIconInputRef}
+          className="server-icon-input"
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={handleServerIconChange}
+        />
       </div>
 
       <div className="channels-container">
