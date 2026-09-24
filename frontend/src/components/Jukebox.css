@@ -1,4 +1,4 @@
-.jukebox { width: min(390px, calc(100% - 24px)); margin: 12px auto; padding: 12px; box-sizing: border-box; border: 1px solid #4b4f59; border-radius: 10px; color: #f2f3f5; background: #2b2d31; box-shadow: 0 4px 14px #0004; }
+.jukebox { position: relative; z-index: 1; width: min(390px, calc(100% - 24px)); margin: 12px auto; padding: 12px; box-sizing: border-box; border: 1px solid #4b4f59; border-radius: 10px; color: #f2f3f5; background: #2b2d31; box-shadow: 0 4px 14px #0004; }
 .jukebox-heading { display: flex; align-items: baseline; gap: 7px; margin-bottom: 9px; }
 .jukebox-heading > span { color: #8ea1e1; font-size: 22px; }.jukebox-heading small { color: #aeb3bd; font-size: 11px; }
 .jukebox-search { display: flex; gap: 6px; }.jukebox-search input { min-width: 0; flex: 1; padding: 9px 10px; border: 1px solid #1d1e20; border-radius: 6px; color: #eee; background: #1e1f22; }.jukebox button { border: 0; border-radius: 5px; padding: 8px 10px; color: white; cursor: pointer; background: #5865f2; }.jukebox button:hover { background: #4752c4; }.jukebox button:disabled { opacity: .6; cursor: wait; }

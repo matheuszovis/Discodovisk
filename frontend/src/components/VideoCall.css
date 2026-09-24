@@ -108,6 +108,7 @@
 .videos-grid {
   flex: 1;
   position: relative;
+  z-index: 2;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 360px));
   justify-content: center;
@@ -151,7 +152,7 @@
   min-height: min(62vh, 640px);
   max-width: 1100px;
   justify-self: center;
-  z-index: 4;
+  z-index: 20;
   cursor: zoom-out;
 }
 
