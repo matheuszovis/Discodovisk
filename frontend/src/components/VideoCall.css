@@ -105,8 +105,17 @@
 }
 
 /* Grid de vídeos */
+.call-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+}
+
 .videos-grid {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   position: relative;
   z-index: 2;
@@ -120,6 +129,11 @@
 }
 
 @media (max-width: 768px) {
+  .call-stage {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
   .video-call-overlay {
     left: 0;
     bottom: 0;

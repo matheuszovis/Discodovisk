@@ -962,7 +962,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
           </div>
         ) : (
           <>
-            <div className="videos-grid">
+            <div className="call-stage">
+              <div className="videos-grid">
               {/* Vídeo local */}
               <div
                 className={`video-wrapper ${speakingUsers[currentUserId] ? 'speaking' : ''} ${(isScreenSharing || expandedParticipantId === 'local') ? 'screen-expanded' : ''}`}
@@ -1020,9 +1021,10 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                   onExpand={() => setExpandedParticipantId(expandedParticipantId === participant.userId ? null : participant.userId)}
                 />
               ))}
-            </div>
+              </div>
 
-            <Jukebox channelId={channel._id} active={inCall} />
+              <Jukebox channelId={channel._id} active={inCall} />
+            </div>
 
             {mediaContextMenu && (
               <div
