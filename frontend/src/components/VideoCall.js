@@ -962,7 +962,6 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
           </div>
         ) : (
           <>
-            <Jukebox channelId={channel._id} active={inCall} />
             <div className="videos-grid">
               {/* Vídeo local */}
               <div
@@ -1022,6 +1021,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                 />
               ))}
             </div>
+
+            <Jukebox channelId={channel._id} active={inCall} />
 
             {mediaContextMenu && (
               <div

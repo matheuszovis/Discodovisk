@@ -125,6 +125,7 @@ function Jukebox({ channelId, active }) {
             src={playerUrl}
             title={`Jukebox: ${jukebox.current.title}`}
             allow="autoplay; encrypted-media; picture-in-picture"
+            referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen
           />
           {!playerEnabled && <p className="jukebox-audio-note">Clique em “Ouvir” uma vez para liberar o áudio neste computador.</p>}
