@@ -3,6 +3,8 @@ import SimplePeer from 'simple-peer';
 import { getSocket } from '../services/socket';
 import { useAuth } from '../contexts/AuthContext';
 import './VideoCall.css';
+import CallAudioSettings, { readAudioSettings, microphoneConstraints, routeAudio, configurePlayback } from './CallAudioSettings';
+import Jukebox from './Jukebox';
 
 /**
  * Componente de chamada de vídeo/voz com compartilhamento de tela
@@ -17,14 +19,73 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const [speakingUsers, setSpeakingUsers] = useState({});
   const [expandedParticipantId, setExpandedParticipantId] = useState(null);
   const [screenSources, setScreenSources] = useState([]);
+  const [participantVolumes, setParticipantVolumes] = useState({});
+  const [screenShareVolumes, setScreenShareVolumes] = useState({});
+  const [mediaContextMenu, setMediaContextMenu] = useState(null);
+  const [callNotice, setCallNotice] = useState('');
+  const [audioSettings, setAudioSettings] = useState(readAudioSettings);
   
   const { user } = useAuth();
   const localVideoRef = useRef(null);
   const screenShareRef = useRef(null);
   const peersRef = useRef({});
+  // A tela usa uma conexão WebRTC própria. Isso evita que a renegociação da voz
+  // descarte o vídeo quando alguém sai e entra novamente na call.
+  const screenPeersRef = useRef({});
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const screenAudioContextRef = useRef(null);
+  const screenAudioNodeRef = useRef(null);
+  const screenAudioQueueRef = useRef([]);
+  const screenAudioInputRef = useRef(null);
+  const isScreenSharingRef = useRef(false);
+  const selectingScreenRef = useRef(false);
   const currentUserId = String(user?.id || user?._id || '');
+
+  const changeAudioSettings = async (next) => {
+    const stream = localStreamRef.current;
+    if (stream && next.input === audioSettings.input && next.noiseSuppression !== audioSettings.noiseSuppression) {
+      const currentTrack = stream.getAudioTracks()[0];
+      // Change processing on the existing microphone instead of opening the
+      // same device twice (some Windows drivers abort concurrent capture).
+      await currentTrack.applyConstraints(microphoneConstraints(next));
+    }
+    if (stream && next.input !== audioSettings.input) {
+      const replacement = await navigator.mediaDevices.getUserMedia({ video: false, audio: microphoneConstraints(next) });
+      const track = replacement.getAudioTracks()[0];
+      const old = stream.getAudioTracks()[0];
+      const changed = [];
+      track.enabled = old?.enabled ?? true;
+      try {
+        for (const peer of Object.values(peersRef.current)) {
+          if (peer.destroyed) continue;
+          peer.replaceTrack(old, track, stream);
+          changed.push(peer);
+        }
+      } catch (error) {
+        changed.forEach(peer => { if (!peer.destroyed) peer.replaceTrack(track, old, stream); });
+        replacement.getTracks().forEach(t => t.stop());
+        throw error;
+      }
+      if (old) stream.removeTrack(old);
+      stream.addTrack(track);
+      old?.stop();
+    }
+    if (next.output !== audioSettings.output) {
+      const elements = [...document.querySelectorAll('.video-call-container audio')];
+      try {
+        for (const element of elements) await routeAudio(element, next.output);
+      } catch (error) {
+        await Promise.allSettled(elements.map(element => routeAudio(element, audioSettings.output)));
+        throw error;
+      }
+    }
+    setAudioSettings(next);
+  };
+
+  useEffect(() => {
+    isScreenSharingRef.current = isScreenSharing;
+  }, [isScreenSharing]);
 
   useEffect(() => {
     onParticipantsChange?.([
@@ -39,6 +100,23 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       screenShareRef.current.play().catch(() => {});
     }
   }, [isScreenSharing]);
+
+  useEffect(() => {
+    if (!mediaContextMenu) return undefined;
+
+    const closeContextMenu = () => setMediaContextMenu(null);
+    document.addEventListener('click', closeContextMenu);
+    return () => {
+      document.removeEventListener('click', closeContextMenu);
+    };
+  }, [mediaContextMenu]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onScreenAudioChunk) return undefined;
+    return window.electronAPI.onScreenAudioChunk((chunk) => {
+      screenAudioInputRef.current?.(chunk);
+    });
+  }, []);
 
   // Log quando o componente é montado
   useEffect(() => {
@@ -83,7 +161,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       { userId: currentUserId, stream: localStreamRef.current },
       ...participants.map((participant) => ({
         userId: participant.userId,
-        stream: participant.stream
+        stream: participant.micStream
       }))
     ].filter(({ stream }) => stream?.getAudioTracks().length);
 
@@ -130,7 +208,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: false,
-        audio: true
+        audio: microphoneConstraints(audioSettings)
       });
 
       console.log('✅ Acesso concedido! Stream:', stream);
@@ -180,6 +258,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
    * Encerra a chamada
    */
   const endCall = (shouldClose = true) => {
+    stopProcessAudioCapture();
+
     // Para todos os streams
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -196,9 +276,15 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       if (peer) peer.destroy();
     });
     peersRef.current = {};
+    Object.values(screenPeersRef.current).forEach(peer => {
+      if (peer) peer.destroy();
+    });
+    screenPeersRef.current = {};
 
     setInCall(false);
     setIsScreenSharing(false);
+    isScreenSharingRef.current = false;
+    setParticipants([]);
 
     // Notifica que saiu da chamada
     const socket = getSocket();
@@ -269,9 +355,10 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
    * Inicia/para compartilhamento de tela
    */
   const toggleScreenShare = async () => {
-    if (isScreenSharing) {
+    if (isScreenSharingRef.current) {
       // Para o compartilhamento de tela
       const previousScreenStream = screenStreamRef.current;
+      stopProcessAudioCapture();
       if (previousScreenStream) {
         previousScreenStream.getTracks().forEach(track => track.stop());
         screenStreamRef.current = null;
@@ -284,16 +371,11 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
 
       setIsScreenSharing(false);
 
-      const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
-      Object.values(peersRef.current).forEach(peer => {
-        if (peer && previousScreenStream) {
-          const screenTrack = previousScreenStream.getVideoTracks()[0];
-          const sender = peer._pc.getSenders().find(s => s.track?.kind === 'video');
-          if (sender && cameraTrack) {
-            sender.replaceTrack(cameraTrack);
-          } else if (screenTrack) {
-            peer.removeTrack(screenTrack, previousScreenStream);
-          }
+      isScreenSharingRef.current = false;
+      Object.entries(screenPeersRef.current).forEach(([key, peer]) => {
+        if (key.startsWith('send:')) {
+          delete screenPeersRef.current[key];
+          peer?.destroy();
         }
       });
 
@@ -317,10 +399,10 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
 
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: { cursor: 'always' },
-          audio: false
+          audio: true
         });
 
-        startScreenShare(screenStream);
+        await startScreenShare(screenStream);
       } catch (error) {
         console.error('Erro ao compartilhar tela:', error);
         alert('Erro ao compartilhar tela. Verifique as permissões.');
@@ -328,10 +410,102 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     }
   };
 
-  const startScreenShare = (screenStream) => {
-    try {
+  const stopProcessAudioCapture = () => {
+    screenAudioInputRef.current = null;
+    screenAudioQueueRef.current = [];
+    screenAudioNodeRef.current?.disconnect();
+    screenAudioNodeRef.current = null;
+    const audioContext = screenAudioContextRef.current;
+    screenAudioContextRef.current = null;
+    audioContext?.close().catch(() => {});
+    window.electronAPI?.stopScreenAudioCapture?.().catch(() => {});
+  };
 
+  const startProcessAudioCapture = async (processId) => {
+    if (!window.electronAPI?.startScreenAudioCapture || !processId) return null;
+
+    const audioContext = new AudioContext({ sampleRate: 48000 });
+    const destination = audioContext.createMediaStreamDestination();
+    const processor = audioContext.createScriptProcessor(2048, 0, 2);
+    screenAudioContextRef.current = audioContext;
+    screenAudioNodeRef.current = processor;
+    screenAudioQueueRef.current = [];
+
+    processor.onaudioprocess = ({ outputBuffer }) => {
+      const left = outputBuffer.getChannelData(0);
+      const right = outputBuffer.getChannelData(1);
+      left.fill(0);
+      right.fill(0);
+      let offset = 0;
+      const queue = screenAudioQueueRef.current;
+
+      while (offset < left.length && queue.length) {
+        const current = queue[0];
+        const available = current.left.length - current.offset;
+        const count = Math.min(left.length - offset, available);
+        left.set(current.left.subarray(current.offset, current.offset + count), offset);
+        right.set(current.right.subarray(current.offset, current.offset + count), offset);
+        current.offset += count;
+        offset += count;
+        if (current.offset === current.left.length) queue.shift();
+      }
+    };
+    processor.connect(destination);
+
+    screenAudioInputRef.current = (chunk) => {
+      const bytes = chunk?.type === 'Buffer' && Array.isArray(chunk.data)
+        ? Uint8Array.from(chunk.data)
+        : new Uint8Array(chunk.buffer, chunk.byteOffset || 0, chunk.byteLength);
+      const frameCount = Math.floor(bytes.byteLength / 4);
+      if (!frameCount) return;
+
+      const samples = new Int16Array(bytes.buffer, bytes.byteOffset, frameCount * 2);
+      const left = new Float32Array(frameCount);
+      const right = new Float32Array(frameCount);
+      for (let index = 0; index < frameCount; index += 1) {
+        left[index] = samples[index * 2] / 32768;
+        right[index] = samples[index * 2 + 1] / 32768;
+      }
+
+      const queue = screenAudioQueueRef.current;
+      queue.push({ left, right, offset: 0 });
+      if (queue.length > 25) queue.splice(0, queue.length - 25);
+    };
+
+    const result = await window.electronAPI.startScreenAudioCapture(processId);
+    if (!result?.ok) {
+      stopProcessAudioCapture();
+      throw new Error(result?.message || 'Não foi possível capturar o áudio da janela.');
+    }
+
+    await audioContext.resume();
+    return destination.stream.getAudioTracks()[0] || null;
+  };
+
+  const startScreenShare = async (screenStream, processId = null) => {
+    try {
+        // O Electron fornece o áudio do sistema junto com getDisplayMedia quando
+        // solicitado. A captura por processo é somente uma reserva para casos
+        // em que o Windows não tenha criado uma faixa de áudio nativa.
+        if (!screenStream.getAudioTracks().length && window.electronAPI?.startScreenAudioCapture) {
+          if (processId) {
+            try {
+              const processAudioTrack = await startProcessAudioCapture(processId);
+              if (processAudioTrack) screenStream.addTrack(processAudioTrack);
+            } catch (error) {
+              stopProcessAudioCapture();
+              setCallNotice(`A imagem será transmitida sem áudio: ${error.message}`);
+            }
+          } else {
+            console.warn('Telas inteiras não possuem um único processo para capturar o áudio exclusivo.');
+          }
+        }
+
+        if (!screenStream.getVideoTracks().some(track => track.readyState === 'live')) {
+          throw new Error('A janela foi fechada ou não forneceu uma faixa de vídeo. Selecione novamente.');
+        }
         screenStreamRef.current = screenStream;
+        isScreenSharingRef.current = true;
 
         // O elemento de vídeo será renderizado após esta mudança de estado.
         setIsScreenSharing(true);
@@ -346,49 +520,53 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
           toggleScreenShare();
         };
 
-        // Substitui a track de vídeo em todos os peers
-        Object.values(peersRef.current).forEach(peer => {
-          if (peer) {
-            const videoTrack = screenStream.getVideoTracks()[0];
-            const sender = peer._pc.getSenders().find(s => s.track?.kind === 'video');
-            if (sender && videoTrack) {
-              sender.replaceTrack(videoTrack);
-            } else if (videoTrack) {
-              peer.addTrack(videoTrack, screenStream);
-            }
-          }
+        // A tela é enviada somente pela conexão dedicada, uma por espectador.
+        Object.keys(peersRef.current).forEach((userId) => {
+          createScreenPeer(userId, true);
         });
 
     } catch (error) {
       console.error('Erro ao iniciar compartilhamento:', error);
-      alert('Não foi possível iniciar o compartilhamento.');
+      screenStream.getTracks().forEach(track => { track.onended = null; track.stop(); });
+      screenStreamRef.current = null;
+      isScreenSharingRef.current = false;
+      setIsScreenSharing(false);
+      stopProcessAudioCapture();
+      setCallNotice(`Não foi possível iniciar o compartilhamento: ${error.message}`);
     }
   };
 
   const selectScreenSource = async (source) => {
+    if (selectingScreenRef.current) return;
+    selectingScreenRef.current = true;
+    setCallNotice('');
     try {
-      const screenStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: source.id,
-            maxFrameRate: 30
-          }
-        }
-      });
+      const selection = await window.electronAPI?.selectScreenSource?.(source.id);
+      if (!selection) {
+        throw new Error('O aplicativo não confirmou a fonte de tela selecionada.');
+      }
+      let screenStream;
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+      } catch (error) {
+        if (!['NotReadableError', 'NotSupportedError'].includes(error.name)) throw error;
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: false });
+        setCallNotice('O Windows não forneceu áudio da tela. A imagem pode ser compartilhada; confira o som da transmissão.');
+      }
       setScreenSources([]);
-      startScreenShare(screenStream);
+      await startScreenShare(screenStream, selection?.processId);
     } catch (error) {
       console.error('Erro ao capturar a fonte escolhida:', error);
-      alert('Não foi possível compartilhar essa tela ou janela.');
+      setCallNotice(`Não foi possível compartilhar essa tela ou janela: ${error.name}: ${error.message}`);
+    } finally {
+      selectingScreenRef.current = false;
     }
   };
 
   /**
    * Cria uma conexão peer
    */
-  const createPeer = (userId, initiator = false, participantAvatar, participantUsername) => {
+  const createPeer = (userId, initiator = false, participantAvatar, participantUsername, participantIsScreenSharing = false) => {
     setParticipants(prev => {
       const exists = prev.find(participant => participant.userId === userId);
       if (exists) {
@@ -406,15 +584,48 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         stream: null,
         avatar: participantAvatar,
         username: participantUsername,
-        isVideoOff: true
+        isVideoOff: true,
+        isScreenSharing: participantIsScreenSharing
       }];
     });
 
     const peer = new SimplePeer({
       initiator,
       trickle: true,
-      stream: localStreamRef.current
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
     });
+
+    // Cada track é adicionada vinculada ao seu stream de origem real (voz ou tela),
+    // para que o lado remoto consiga diferenciar os dois streams pelo id.
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => {
+        peer.addTrack(track, localStreamRef.current);
+      });
+    }
+    const handleIncomingStream = (stream) => {
+      setParticipants(prev => prev.map(participant => {
+        if (participant.userId !== userId) return participant;
+
+        const voiceStreamId = participant.voiceStreamId || stream.id;
+        const isVoiceStream = stream.id === voiceStreamId;
+
+        if (isVoiceStream) {
+          return {
+            ...participant,
+            voiceStreamId,
+            micStream: new MediaStream(stream.getAudioTracks()),
+            cameraStream: new MediaStream(stream.getVideoTracks())
+          };
+        }
+
+        return participant;
+      }));
+    };
 
     peer.on('signal', (signal) => {
       const socket = getSocket();
@@ -428,20 +639,9 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       });
     });
 
-    peer.on('stream', (stream) => {
-      setParticipants(prev => {
-        return prev.map(participant => participant.userId === userId
-          ? { ...participant, stream }
-          : participant
-        );
-      });
-    });
-
+    peer.on('stream', handleIncomingStream);
     peer.on('track', (track, stream) => {
-      setParticipants(prev => prev.map(participant => participant.userId === userId
-        ? { ...participant, stream }
-        : participant
-      ));
+      if (stream) handleIncomingStream(stream);
     });
 
     peer.on('error', (error) => {
@@ -452,7 +652,118 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     return peer;
   };
 
-  const handleCallSignal = ({ signal, senderId, senderAvatar, senderUsername }) => {
+  const createScreenPeer = (userId, initiator = false, participantAvatar, participantUsername, incomingSession) => {
+    const key = `${initiator ? 'send' : 'receive'}:${userId}`;
+    const existingPeer = screenPeersRef.current[key];
+    if (existingPeer && !existingPeer.destroyed) return existingPeer;
+    const sessionId = incomingSession || `${currentUserId}-${Date.now()}-${Math.random()}`;
+
+    const peer = new SimplePeer({
+      initiator,
+      trickle: true,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
+    });
+
+    // Só quem está compartilhando anexa as tracks. Quem voltou para a call
+    // inicia a conexão vazia e recebe a tela do outro lado.
+    if (initiator && screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((track) => {
+        peer.addTrack(track, screenStreamRef.current);
+      });
+    }
+
+    const receiveScreenStream = (stream) => {
+      if (initiator || screenPeersRef.current[key] !== peer) return;
+      setParticipants((previousParticipants) => {
+        const currentParticipant = previousParticipants.find((participant) => participant.userId === userId) || {
+          userId,
+          avatar: participantAvatar,
+          username: participantUsername,
+          isVideoOff: true
+        };
+        const updatedParticipant = {
+          ...currentParticipant,
+          avatar: currentParticipant.avatar || participantAvatar,
+          username: currentParticipant.username || participantUsername,
+          isScreenSharing: true,
+          screenVideoStream: stream.getVideoTracks().length
+            ? new MediaStream(stream.getVideoTracks())
+            : currentParticipant.screenVideoStream,
+          screenAudioStream: stream.getAudioTracks().length
+            ? new MediaStream(stream.getAudioTracks())
+            : currentParticipant.screenAudioStream
+        };
+
+        return previousParticipants.some((participant) => participant.userId === userId)
+          ? previousParticipants.map((participant) => participant.userId === userId ? updatedParticipant : participant)
+          : [...previousParticipants, updatedParticipant];
+      });
+    };
+
+    peer.on('signal', (peerSignal) => {
+      const socket = getSocket();
+      if (!socket?.connected || peer.destroyed) return;
+      socket.emit('call:signal', {
+        // O servidor apenas repassa "signal"; este envelope permite separar a
+        // tela da conexão normal de voz sem mudança no protocolo do servidor.
+        signal: { _discordoviskMedia: 'screen', payload: peerSignal,
+          screenOwner: initiator ? currentUserId : userId, sessionId },
+        recipientId: userId,
+        channelId: channel._id,
+        senderAvatar: user.avatar,
+        senderUsername: user.username
+      });
+    });
+
+    peer.on('stream', receiveScreenStream);
+    peer.on('track', (track, stream) => {
+      if (stream) receiveScreenStream(stream);
+    });
+    peer.on('error', (error) => {
+      console.error('Erro no peer de compartilhamento:', error);
+    });
+    peer.on('close', () => {
+      if (screenPeersRef.current[key] === peer) delete screenPeersRef.current[key];
+    });
+
+    peer.screenSessionId = sessionId;
+    screenPeersRef.current[key] = peer;
+    return peer;
+  };
+
+  const handleCallSignal = ({ signal, senderId, senderAvatar, senderUsername, channelId }) => {
+    if (channelId !== channel._id || String(senderId) === currentUserId || !localStreamRef.current) return;
+
+    if (signal?._discordoviskMedia === 'screen') {
+      const isSender = signal.screenOwner === currentUserId;
+      const key = `${isSender ? 'send' : 'receive'}:${senderId}`;
+      let screenPeer = screenPeersRef.current[key];
+      if (signal.payload?.type === 'offer' && !isSender && screenPeer
+          && screenPeer.screenSessionId !== signal.sessionId) {
+        delete screenPeersRef.current[key];
+        screenPeer.destroy();
+        screenPeer = null;
+      }
+      if (!screenPeer || screenPeer.destroyed) {
+        if (isSender || signal.payload?.type !== 'offer') return;
+        screenPeer = createScreenPeer(senderId, false, senderAvatar, senderUsername, signal.sessionId);
+      }
+      if (signal.sessionId && screenPeer.screenSessionId !== signal.sessionId) return;
+      try {
+        screenPeer.signal(signal.payload);
+      } catch (error) {
+        if (!error.message?.includes('peer is destroyed')) {
+          console.error('Erro ao processar sinal da tela:', error);
+        }
+      }
+      return;
+    }
+
     setParticipants(prev => prev.map(participant => participant.userId === senderId
       ? {
         ...participant,
@@ -484,27 +795,36 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       peer.destroy();
       delete peersRef.current[userId];
     }
+    ['send', 'receive'].forEach(direction => {
+      const key = `${direction}:${userId}`;
+      const screenPeer = screenPeersRef.current[key];
+      delete screenPeersRef.current[key];
+      screenPeer?.destroy();
+    });
     setParticipants(prev => prev.filter(p => p.userId !== userId));
   };
 
   const handleCallParticipants = (participantsInCall) => {
-    participantsInCall.forEach(({ userId, username, avatar }) => {
+    participantsInCall.forEach(({ userId, username, avatar, isScreenSharing }) => {
       if (userId !== currentUserId && !peersRef.current[userId]) {
-        createPeer(userId, true, avatar, username);
+        createPeer(userId, true, avatar, username, isScreenSharing);
       }
 
       setParticipants(prev => prev.map(participant => participant.userId === userId
         ? {
           ...participant,
           username: participant.username || username,
-          avatar: participant.avatar || avatar
+          avatar: participant.avatar || avatar,
+          isScreenSharing: Boolean(isScreenSharing)
         }
         : participant
       ));
     });
   };
 
-  const handleUserJoined = ({ userId, username, avatar }) => {
+  const handleUserJoined = ({ userId, username, avatar, channelId }) => {
+    if (channelId && channelId !== channel._id) return;
+    if (!localStreamRef.current || String(userId) === currentUserId) return;
     playCallJoinSound();
     setParticipants(prev => {
       const exists = prev.find(participant => participant.userId === userId);
@@ -523,6 +843,16 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         isVideoOff: true
       }];
     });
+
+    // A pessoa que voltou recebe uma conexão de tela nova imediatamente. Isso
+    // independe do estado da conexão de voz que ela acabou de reconstruir.
+    if (screenStreamRef.current) {
+      const key = `send:${userId}`;
+      const previous = screenPeersRef.current[key];
+      delete screenPeersRef.current[key];
+      previous?.destroy();
+      createScreenPeer(userId, true, avatar, username);
+    }
   };
 
   const playCallJoinSound = () => {
@@ -546,14 +876,20 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     window.setTimeout(() => audioContext.close(), 600);
   };
 
-  const handleUserLeft = ({ userId }) => {
+  const handleUserLeft = ({ userId, channelId }) => {
+    if (channelId && channelId !== channel._id) return;
     handleCallEnd({ userId });
   };
 
   const handleScreenShareState = ({ userId, isSharing }) => {
+    if (!isSharing && screenPeersRef.current[`receive:${userId}`]) {
+      screenPeersRef.current[`receive:${userId}`].destroy();
+      delete screenPeersRef.current[`receive:${userId}`];
+    }
     setParticipants(prev => prev.map((participant) => (
       participant.userId === userId
-        ? { ...participant, isScreenSharing: isSharing }
+        ? { ...participant, isScreenSharing: isSharing,
+          ...(!isSharing ? { screenVideoStream: null, screenAudioStream: null } : {}) }
         : participant
     )));
   };
@@ -566,6 +902,39 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     )));
   };
 
+  const setParticipantVolume = (userId, volume, isScreenSharing) => {
+    const setVolumes = isScreenSharing ? setScreenShareVolumes : setParticipantVolumes;
+    setVolumes((currentVolumes) => ({
+      ...currentVolumes,
+      [userId]: Number(volume)
+    }));
+  };
+
+  const openMediaContextMenu = (event) => {
+    event.preventDefault();
+    setMediaContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      video: event.currentTarget
+    });
+  };
+
+  const openPictureInPicture = async () => {
+    const video = mediaContextMenu?.video;
+    setMediaContextMenu(null);
+    if (!video || !document.pictureInPictureEnabled || !video.requestPictureInPicture) return;
+
+    try {
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture();
+      } else {
+        await video.requestPictureInPicture();
+      }
+    } catch (error) {
+      console.error('Não foi possível abrir Picture in Picture:', error);
+    }
+  };
+
   return (
     <div className="video-call-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.95)', zIndex: 9999 }}>
       <div className="video-call-container">
@@ -576,6 +945,10 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
           </button>
         </div>
 
+        <CallAudioSettings settings={audioSettings} onChange={changeAudioSettings} inCall={inCall} />
+        {callNotice && <div className="call-notice" role="alert">{callNotice}
+          <button onClick={() => setCallNotice('')} aria-label="Fechar aviso">✕</button>
+        </div>}
         {!inCall ? (
           <div className="call-start">
             <div className="call-info">
@@ -589,6 +962,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
           </div>
         ) : (
           <>
+            <Jukebox channelId={channel._id} active={inCall} />
             <div className="videos-grid">
               {/* Vídeo local */}
               <div
@@ -610,6 +984,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                     muted
                     playsInline
                     className="video-element screen-share-element"
+                    onContextMenu={openMediaContextMenu}
                     onLoadedMetadata={(event) => event.currentTarget.play().catch(() => {})}
                   />
                 )}
@@ -632,12 +1007,35 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                 <ParticipantVideo
                   key={participant.userId}
                   participant={participant}
+                  outputDevice={audioSettings.output}
+                  onAudioError={setCallNotice}
                   isSpeaking={Boolean(speakingUsers[participant.userId])}
                   isExpanded={expandedParticipantId === participant.userId}
+                  voiceVolume={participantVolumes[participant.userId] ?? 1}
+                  screenShareVolume={screenShareVolumes[participant.userId] ?? 1}
+                  onVolumeChange={(volume, isScreenAudio) => setParticipantVolume(
+                    participant.userId,
+                    volume,
+                    isScreenAudio
+                  )}
                   onExpand={() => setExpandedParticipantId(expandedParticipantId === participant.userId ? null : participant.userId)}
                 />
               ))}
             </div>
+
+            {mediaContextMenu && (
+              <div
+                className="media-context-menu"
+                style={{ top: mediaContextMenu.y, left: mediaContextMenu.x }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button type="button" onClick={openPictureInPicture}>
+                  {document.pictureInPictureElement === mediaContextMenu.video
+                    ? 'Sair do Picture in Picture'
+                    : 'Abrir em Picture in Picture'}
+                </button>
+              </div>
+            )}
 
             {screenSources.length > 0 && (
               <div className="screen-source-overlay">
@@ -646,6 +1044,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                     <h2>Escolha o que compartilhar</h2>
                     <button type="button" onClick={() => setScreenSources([])} title="Cancelar">✕</button>
                   </div>
+                  <p>Escolha uma janela ou tela. O áudio continua tocando normalmente no seu computador durante a transmissão.</p>
                   <div className="screen-source-grid">
                     {screenSources.map((source) => (
                       <button
@@ -656,6 +1055,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                       >
                         <img src={source.thumbnail} alt="" />
                         <span>{source.name}</span>
+                        <small>{source.isWindow ? 'Imagem e áudio da transmissão' : 'Tela com áudio da transmissão'}</small>
                       </button>
                     ))}
                   </div>
@@ -707,17 +1107,73 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
 /**
  * Componente para exibir vídeo de um participante
  */
-function ParticipantVideo({ participant, isSpeaking, isExpanded, onExpand }) {
+function ParticipantVideo({
+  participant,
+  outputDevice,
+  onAudioError,
+  isSpeaking,
+  isExpanded,
+  voiceVolume,
+  screenShareVolume,
+  onVolumeChange,
+  onExpand
+}) {
   const videoRef = useRef(null);
+  const voiceAudioRef = useRef(null);
+  const screenAudioRef = useRef(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [mediaContextMenu, setMediaContextMenu] = useState(null);
 
   useEffect(() => {
     setIsVideoPlaying(false);
-    if (videoRef.current && participant.stream) {
-      videoRef.current.srcObject = participant.stream;
+    const displayStream = participant.isScreenSharing && participant.screenVideoStream
+      ? participant.screenVideoStream
+      : participant.cameraStream;
+    if (videoRef.current && displayStream) {
+      videoRef.current.srcObject = displayStream;
       videoRef.current.play().catch(() => {});
     }
-  }, [participant.stream]);
+  }, [participant.cameraStream, participant.screenVideoStream, participant.isScreenSharing]);
+
+  useEffect(() => {
+    configurePlayback(voiceAudioRef.current, participant.micStream, voiceVolume, outputDevice)
+      .catch(error => onAudioError(`Não foi possível usar a saída da voz: ${error.message}`));
+  }, [participant.micStream, voiceVolume, outputDevice, onAudioError]);
+
+  useEffect(() => {
+    configurePlayback(screenAudioRef.current, participant.screenAudioStream, screenShareVolume, outputDevice)
+      .catch(error => onAudioError(`Não foi possível usar a saída da transmissão: ${error.message}`));
+  }, [participant.screenAudioStream, screenShareVolume, outputDevice, onAudioError]);
+
+  useEffect(() => {
+    if (!mediaContextMenu) return undefined;
+
+    const closeContextMenu = () => setMediaContextMenu(null);
+    document.addEventListener('click', closeContextMenu);
+    return () => {
+      document.removeEventListener('click', closeContextMenu);
+    };
+  }, [mediaContextMenu]);
+
+  const openMediaContextMenu = (event) => {
+    event.preventDefault();
+    setMediaContextMenu({ x: event.clientX, y: event.clientY });
+  };
+
+  const openPictureInPicture = async () => {
+    setMediaContextMenu(null);
+    if (!videoRef.current || !document.pictureInPictureEnabled || !videoRef.current.requestPictureInPicture) return;
+
+    try {
+      if (document.pictureInPictureElement === videoRef.current) {
+        await document.exitPictureInPicture();
+      } else {
+        await videoRef.current.requestPictureInPicture();
+      }
+    } catch (error) {
+      console.error('Não foi possível abrir Picture in Picture:', error);
+    }
+  };
 
   return (
     <div
@@ -727,10 +1183,13 @@ function ParticipantVideo({ participant, isSpeaking, isExpanded, onExpand }) {
       <video
         ref={videoRef}
         autoPlay
+        muted
         playsInline
         className={`video-element ${participant.isScreenSharing ? 'screen-share-element' : ''}`}
+        onContextMenu={openMediaContextMenu}
         onPlaying={() => setIsVideoPlaying(true)}
       />
+      <audio ref={voiceAudioRef} autoPlay playsInline />
       {!participant.isScreenSharing && (participant.isVideoOff || !isVideoPlaying) && (
         <div className="video-off-overlay">
           <img
@@ -743,6 +1202,46 @@ function ParticipantVideo({ participant, isSpeaking, isExpanded, onExpand }) {
       <div className="video-label">
         {participant.isScreenSharing ? '🖥️ Compartilhando tela' : (participant.username || `Participante ${participant.userId.substring(0, 8)}`)}
       </div>
+      <label className="volume-control" onClick={(event) => event.stopPropagation()}>
+        <span aria-hidden="true">🔊</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={voiceVolume}
+          aria-label={`Volume da voz de ${participant.username || 'participante'}`}
+          onChange={(event) => onVolumeChange(event.target.value, false)}
+        />
+      </label>
+      {participant.isScreenSharing && (
+        <label className="volume-control volume-control-screen" onClick={(event) => event.stopPropagation()}>
+          <span aria-hidden="true">🖥️</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={screenShareVolume}
+            aria-label={`Volume do compartilhamento de ${participant.username || 'participante'}`}
+            onChange={(event) => onVolumeChange(event.target.value, true)}
+          />
+        </label>
+      )}
+      <audio ref={screenAudioRef} autoPlay playsInline />
+      {mediaContextMenu && (
+        <div
+          className="media-context-menu"
+          style={{ top: mediaContextMenu.y, left: mediaContextMenu.x }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button type="button" onClick={openPictureInPicture}>
+            {document.pictureInPictureElement === videoRef.current
+              ? 'Sair do Picture in Picture'
+              : 'Abrir em Picture in Picture'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

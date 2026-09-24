@@ -9,8 +9,16 @@ import siteLogo from '../assets/logo-do-site.png';
  * Permite que o usuário faça login na aplicação
  */
 function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [savedCredentials] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('savedCredentials') || 'null');
+    } catch {
+      return null;
+    }
+  });
+  const [email, setEmail] = useState(savedCredentials?.email || '');
+  const [password, setPassword] = useState(savedCredentials?.password || '');
+  const [rememberLogin, setRememberLogin] = useState(Boolean(savedCredentials));
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -25,6 +33,11 @@ function Login() {
     const result = await login(email, password);
 
     if (result.success) {
+      if (rememberLogin) {
+        localStorage.setItem('savedCredentials', JSON.stringify({ email, password }));
+      } else {
+        localStorage.removeItem('savedCredentials');
+      }
       navigate(result.mustChangePassword ? '/alterar-senha' : '/app');
     } else {
       setError(result.message);
@@ -69,6 +82,16 @@ function Login() {
               disabled={loading}
             />
           </div>
+
+          <label className="remember-login">
+            <input
+              type="checkbox"
+              checked={rememberLogin}
+              onChange={(e) => setRememberLogin(e.target.checked)}
+              disabled={loading}
+            />
+            <span>Salvar login e senha neste dispositivo</span>
+          </label>
 
           <button 
             type="submit" 

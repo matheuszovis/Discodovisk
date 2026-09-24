@@ -3,6 +3,8 @@ const User = require('../models/User');
 const Message = require('../models/Message');
 
 const activeCalls = new Map();
+const activeScreenShares = new Map();
+const jukeboxes = new Map();
 
 /**
  * Configuração do Socket.io para comunicação em tempo real
@@ -161,31 +163,29 @@ module.exports = (io) => {
     /**
      * Chamada de voz/vídeo - WebRTC signaling
      */
-    socket.on('call:join', (data) => {
+    socket.on('call:join', async (data) => {
       const { channelId, serverId, userId, username, avatar } = data;
       const room = `call:${channelId}`;
       const serverRoom = serverId ? `server:${serverId}` : room;
 
-      io.in(room).fetchSockets().then((existingSockets) => {
-        socket.join(room);
-        activeCalls.set(channelId, [
-          ...existingSockets.map((participantSocket) => ({
-            userId: participantSocket.user._id.toString(),
-            username: participantSocket.user.username,
-            avatar: participantSocket.user.avatar
-          })),
-          {
-            userId: socket.user._id.toString(),
-            username: socket.user.username,
-            avatar: socket.user.avatar
-          }
-        ]);
+      try {
+        // Um usuário só pode estar em uma chamada por vez. Isso remove salas
+        // antigas que poderiam deixar participantes "fantasma" na malha P2P.
+        for (const joinedRoom of socket.rooms) {
+          if (joinedRoom.startsWith('call:') && joinedRoom !== room) socket.leave(joinedRoom);
+        }
 
-        socket.emit('call:participants', existingSockets.map((participantSocket) => ({
-          userId: participantSocket.user._id.toString(),
-          username: participantSocket.user.username,
-          avatar: participantSocket.user.avatar
-        })));
+        socket.join(room);
+        const participants = await getCallParticipants(io, room);
+        activeCalls.set(channelId, participants);
+
+        // Quem entrou cria uma conexão direta para cada participante já presente.
+        socket.emit('call:participants', participants
+          .filter((participant) => participant.userId !== socket.user._id.toString())
+          .map((participant) => ({
+            ...participant,
+            isScreenSharing: activeScreenShares.get(channelId)?.has(participant.userId) || false
+          })));
 
         socket.to(serverRoom).emit('call:user-joined', {
           userId,
@@ -195,14 +195,15 @@ module.exports = (io) => {
         });
 
         broadcastCallParticipants(io, room, channelId, serverRoom);
-      }).catch((error) => {
+      } catch (error) {
         console.error('Erro ao entrar na chamada:', error);
-      });
+      }
     });
 
     socket.on('call:leave', (data) => {
       const { channelId, serverId, userId } = data;
       const serverRoom = serverId ? `server:${serverId}` : `call:${channelId}`;
+      removeScreenShare(channelId, userId);
       // Sai da sala do canal
       socket.leave(`call:${channelId}`);
       // Notifica outros participantes
@@ -232,8 +233,16 @@ module.exports = (io) => {
 
     socket.on('call:screen-share', (data) => {
       const { channelId, isSharing } = data;
+      const userId = socket.user._id.toString();
+      const channelShares = activeScreenShares.get(channelId) || new Set();
+      if (isSharing) {
+        channelShares.add(userId);
+        activeScreenShares.set(channelId, channelShares);
+      } else {
+        removeScreenShare(channelId, userId);
+      }
       socket.to(`call:${channelId}`).emit('call:screen-share', {
-        userId: socket.user._id.toString(),
+        userId,
         isSharing
       });
     });
@@ -243,6 +252,45 @@ module.exports = (io) => {
         userId: socket.user._id.toString(),
         isVideoOff
       });
+    });
+
+    socket.on('jukebox:state', ({ channelId }) => {
+      if (!socket.rooms.has(`call:${channelId}`)) return;
+      socket.emit('jukebox:state', getJukeboxState(channelId));
+    });
+
+    socket.on('jukebox:add', ({ channelId, track }) => {
+      if (!socket.rooms.has(`call:${channelId}`)) return;
+      if (!channelId || !track?.videoId || !track?.title) return;
+      const jukebox = jukeboxes.get(channelId) || emptyJukebox(channelId);
+      jukebox.queue.push({
+        videoId: String(track.videoId),
+        title: String(track.title).slice(0, 200),
+        channelTitle: String(track.channelTitle || '').slice(0, 120),
+        thumbnail: String(track.thumbnail || ''),
+        requestedBy: socket.user.username
+      });
+      if (!jukebox.current) startNext(jukebox);
+      jukeboxes.set(channelId, jukebox);
+      broadcastJukebox(io, channelId);
+    });
+
+    socket.on('jukebox:control', ({ channelId, action }) => {
+      if (!socket.rooms.has(`call:${channelId}`)) return;
+      const jukebox = jukeboxes.get(channelId);
+      if (!jukebox) return;
+      if (action === 'pause' && jukebox.status === 'playing') {
+        jukebox.position += (Date.now() - jukebox.changedAt) / 1000;
+        jukebox.status = 'paused';
+      } else if (action === 'play' && jukebox.current) {
+        jukebox.status = 'playing';
+      } else if (action === 'skip') {
+        startNext(jukebox);
+      } else {
+        return;
+      }
+      jukebox.changedAt = Date.now();
+      broadcastJukebox(io, channelId);
     });
 
     socket.on('call:end', (data) => {
@@ -286,11 +334,20 @@ module.exports = (io) => {
       updateUserStatus(socket.user._id, 'offline');
       callRooms.forEach((room) => {
         const channelId = room.replace('call:', '');
+        removeScreenShare(channelId, socket.user._id.toString());
         setTimeout(() => broadcastCallParticipants(io, room, channelId), 0);
       });
     });
   });
 };
+
+function removeScreenShare(channelId, userId) {
+  const channelShares = activeScreenShares.get(channelId);
+  if (!channelShares) return;
+
+  channelShares.delete(String(userId));
+  if (!channelShares.size) activeScreenShares.delete(channelId);
+}
 
 /**
  * Função auxiliar para atualizar o status do usuário
@@ -305,11 +362,43 @@ async function updateUserStatus(userId, status) {
 
 async function getCallParticipants(io, room) {
   const sockets = await io.in(room).fetchSockets();
-  return sockets.map((participantSocket) => ({
-    userId: participantSocket.user._id.toString(),
-    username: participantSocket.user.username,
-    avatar: participantSocket.user.avatar
-  }));
+  const uniqueParticipants = new Map();
+
+  sockets.forEach((participantSocket) => {
+    const userId = participantSocket.user._id.toString();
+    if (!uniqueParticipants.has(userId)) {
+      uniqueParticipants.set(userId, {
+        userId,
+        username: participantSocket.user.username,
+        avatar: participantSocket.user.avatar
+      });
+    }
+  });
+
+  return [...uniqueParticipants.values()];
+}
+
+function emptyJukebox(channelId) {
+  return { channelId, current: null, queue: [], status: 'paused', position: 0, changedAt: Date.now() };
+}
+
+function startNext(jukebox) {
+  jukebox.current = jukebox.queue.shift() || null;
+  jukebox.status = jukebox.current ? 'playing' : 'paused';
+  jukebox.position = 0;
+  jukebox.changedAt = Date.now();
+}
+
+function getJukeboxState(channelId) {
+  const jukebox = jukeboxes.get(channelId) || emptyJukebox(channelId);
+  const position = jukebox.status === 'playing'
+    ? jukebox.position + ((Date.now() - jukebox.changedAt) / 1000)
+    : jukebox.position;
+  return { ...jukebox, position };
+}
+
+function broadcastJukebox(io, channelId) {
+  io.to(`call:${channelId}`).emit('jukebox:state', getJukeboxState(channelId));
 }
 
 async function broadcastCallParticipants(io, room, channelId, audienceRoom = room) {

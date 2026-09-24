@@ -12,6 +12,7 @@ const authRoutes = require('./routes/auth');
 const serverRoutes = require('./routes/servers');
 const channelRoutes = require('./routes/channels');
 const dmRoutes = require('./routes/dm');
+const jukeboxRoutes = require('./routes/jukebox');
 
 const app = express();
 const server = http.createServer(app);
@@ -60,6 +61,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/dm', dmRoutes);
+app.use('/api/jukebox', jukeboxRoutes);
 
 // Rota de teste
 app.get('/', (req, res) => {

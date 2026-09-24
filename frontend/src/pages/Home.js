@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ServerList from '../components/ServerList';
 import ChannelList from '../components/ChannelList';
 import ChatArea from '../components/ChatArea';
 import VideoCall from '../components/VideoCall';
+import CallAudioSettings, { readAudioSettings } from '../components/CallAudioSettings';
 import './Home.css';
+import packageInfo from '../../package.json';
 
 /**
  * Página principal do aplicativo
@@ -16,12 +18,42 @@ function Home() {
   const [selectedServer, setSelectedServer] = useState(null);
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [callChannel, setCallChannel] = useState(null);
+  const [savedAudioSettings, setSavedAudioSettings] = useState(readAudioSettings);
   const [activeCallParticipants, setActiveCallParticipants] = useState([]);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar || '');
   const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState('');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateVersion, setUpdateVersion] = useState('');
   const { updateProfile } = useAuth();
+
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateAvailable) return undefined;
+
+    return window.electronAPI.onUpdateAvailable(({ version }) => {
+      setUpdateVersion(version);
+      setUpdateStatus(`Baixando a versão ${version}: 0%`);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateDownloadProgress) return undefined;
+
+    return window.electronAPI.onUpdateDownloadProgress(({ percent }) => {
+      setUpdateStatus(`Baixando a versão ${updateVersion || 'nova'}: ${percent}%`);
+    });
+  }, [updateVersion]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateError) return undefined;
+
+    return window.electronAPI.onUpdateError(({ message }) => {
+      setUpdateStatus(`Erro ao atualizar: ${message}`);
+      setCheckingUpdate(false);
+    });
+  }, []);
 
   const handleSelectChannel = (channel) => {
     setSelectedChannel(channel);
@@ -39,6 +71,28 @@ function Home() {
     setAvatarUrl(user?.avatar || '');
     setProfileError('');
     setShowProfileSettings(true);
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (!window.electronAPI?.checkForUpdates) {
+      setUpdateStatus('Atualizações automáticas funcionam apenas no aplicativo instalado.');
+      return;
+    }
+
+    setCheckingUpdate(true);
+    setUpdateStatus('Verificando atualizações...');
+    const result = await window.electronAPI.checkForUpdates();
+    if (result.status === 'downloading') {
+      setUpdateVersion(result.version);
+      setUpdateStatus(`Baixando a versão ${result.version}: 0%`);
+    } else if (result.status === 'not-available') {
+      setUpdateStatus('Você já está usando a versão mais recente.');
+    } else if (result.status === 'development') {
+      setUpdateStatus('Atualizações ficam disponíveis no aplicativo instalado.');
+    } else {
+      setUpdateStatus(result.message || 'Não foi possível verificar atualizações.');
+    }
+    setCheckingUpdate(false);
   };
 
   const handleAvatarFile = (event) => {
@@ -105,6 +159,15 @@ function Home() {
 
   return (
     <div className="home-container">
+      <div className="app-version" title="Versão do aplicativo">v{packageInfo.version}</div>
+      <button
+        onClick={handleCheckForUpdates}
+        className="btn-update-check"
+        title="Verificar atualizações"
+        disabled={checkingUpdate}
+      >
+        {checkingUpdate ? '⏳' : '🔄'}
+      </button>
       {/* Barra lateral com lista de servidores */}
       <ServerList 
         selectedServer={selectedServer}
@@ -169,6 +232,12 @@ function Home() {
           </button>
         </div>
       </div>
+      {updateStatus && (
+        <div className="update-status" role="status">
+          <span>{updateStatus}</span>
+          <button type="button" onClick={() => setUpdateStatus('')} title="Fechar">✕</button>
+        </div>
+      )}
 
       {showProfileSettings && (
         <div
@@ -240,6 +309,7 @@ function Home() {
       )}
 
       {/* Componente de chamada de vídeo */}
+      {!callChannel && <CallAudioSettings settings={savedAudioSettings} onChange={setSavedAudioSettings} inCall={false} />}
       {callChannel && (
         <VideoCall 
           channel={callChannel}
@@ -247,6 +317,7 @@ function Home() {
           onClose={() => {
             console.log('🔒 Fechando chamada, limpando callChannel');
             setCallChannel(null);
+            setSavedAudioSettings(readAudioSettings());
             setActiveCallParticipants([]);
           }}
         />
