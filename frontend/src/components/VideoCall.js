@@ -965,7 +965,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
             <div className="videos-grid">
               {/* Vídeo local */}
               <div
-                className={`video-wrapper ${speakingUsers[currentUserId] ? 'speaking' : ''} ${expandedParticipantId === 'local' ? 'screen-expanded' : ''}`}
+                className={`video-wrapper ${speakingUsers[currentUserId] ? 'speaking' : ''} ${(isScreenSharing || expandedParticipantId === 'local') ? 'screen-expanded' : ''}`}
                 onClick={() => isScreenSharing && setExpandedParticipantId(expandedParticipantId === 'local' ? null : 'local')}
               >
                 <video
@@ -1009,7 +1009,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                   outputDevice={audioSettings.output}
                   onAudioError={setCallNotice}
                   isSpeaking={Boolean(speakingUsers[participant.userId])}
-                  isExpanded={expandedParticipantId === participant.userId}
+                  isExpanded={participant.isScreenSharing || expandedParticipantId === participant.userId}
                   voiceVolume={participantVolumes[participant.userId] ?? 1}
                   screenShareVolume={screenShareVolumes[participant.userId] ?? 1}
                   onVolumeChange={(volume, isScreenAudio) => setParticipantVolume(

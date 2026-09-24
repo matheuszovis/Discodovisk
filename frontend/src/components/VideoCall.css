@@ -107,6 +107,7 @@
 /* Grid de vídeos */
 .videos-grid {
   flex: 1;
+  min-height: 0;
   position: relative;
   z-index: 2;
   display: grid;
