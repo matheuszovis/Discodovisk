@@ -21,7 +21,12 @@ const configuredOrigins = (process.env.FRONTEND_URL || '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 const frontendOrigins = [
-  ...new Set([...configuredOrigins, 'http://localhost:3000', 'http://localhost:3001'])
+  ...new Set([
+    ...configuredOrigins,
+    'https://discordovisk-frontend.onrender.com',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ])
 ];
 
 const isAllowedOrigin = (origin, callback) => {

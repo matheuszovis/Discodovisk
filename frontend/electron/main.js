@@ -223,7 +223,15 @@ const createWindow = () => {
 
   mainWindow.removeMenu();
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'build', 'index.html'));
+  // No executável, carregamos a versão HTTPS publicada. Além de receber as
+  // atualizações do site imediatamente, isso fornece o Referer exigido pelo
+  // player oficial do YouTube. Durante o desenvolvimento continuamos usando
+  // os arquivos locais gerados pelo React.
+  if (app.isPackaged) {
+    mainWindow.loadURL('https://discordovisk-frontend.onrender.com');
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '..', 'build', 'index.html'));
+  }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
