@@ -19,8 +19,10 @@ function Jukebox({ channelId, active }) {
 
     const onState = (nextState) => setJukebox(nextState);
     const onError = ({ message }) => setError(message || 'Não foi possível atualizar a Jukebox.');
+    const requestCurrentState = () => socket.emit('jukebox:state', { channelId });
     socket.on('jukebox:state', onState);
     socket.on('jukebox:error', onError);
+    socket.on('connect', requestCurrentState);
     // A entrada no canal de voz chega ao servidor imediatamente antes deste
     // componente montar. Um pequeno atraso evita pedir o estado antes do join.
     const requestState = window.setTimeout(() => socket.emit('jukebox:state', { channelId }), 250);
@@ -29,6 +31,7 @@ function Jukebox({ channelId, active }) {
       window.clearTimeout(requestState);
       socket.off('jukebox:state', onState);
       socket.off('jukebox:error', onError);
+      socket.off('connect', requestCurrentState);
     };
   }, [active, channelId]);
 

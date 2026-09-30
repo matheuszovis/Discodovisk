@@ -43,6 +43,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const screenAudioInputRef = useRef(null);
   const screenAudioStatsRef = useRef(null);
   const isScreenSharingRef = useRef(false);
+  const inCallRef = useRef(false);
+  const peerRepairCooldownRef = useRef({});
   const selectingScreenRef = useRef(false);
   const currentUserId = String(user?.id || user?._id || '');
 
@@ -90,6 +92,10 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   useEffect(() => {
     isScreenSharingRef.current = isScreenSharing;
   }, [isScreenSharing]);
+
+  useEffect(() => {
+    inCallRef.current = inCall;
+  }, [inCall]);
 
   useEffect(() => {
     onParticipantsChange?.([
@@ -154,6 +160,22 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     socket.on('call:end', handleCallEnd);
     socket.on('call:user-joined', handleUserJoined);
     socket.on('call:user-left', handleUserLeft);
+    socket.on('call:repair', handleCallRepair);
+    const onSocketReconnect = () => {
+      if (!inCallRef.current || !localStreamRef.current) return;
+      socket.emit('call:join', {
+        channelId: channel._id,
+        serverId: channel.server,
+        userId: currentUserId,
+        username: user.username,
+        avatar: user.avatar
+      });
+      // A nova sessão do Socket.io não deve reutilizar a sinalização antiga.
+      window.setTimeout(() => {
+        Object.keys(peersRef.current).forEach((userId) => requestPeerRepair(userId, 'socket reconectado'));
+      }, 300);
+    };
+    socket.on('connect', onSocketReconnect);
 
     return () => {
       socket.off('call:signal', handleCallSignal);
@@ -163,6 +185,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       socket.off('call:end', handleCallEnd);
       socket.off('call:user-joined', handleUserJoined);
       socket.off('call:user-left', handleUserLeft);
+      socket.off('call:repair', handleCallRepair);
+      socket.off('connect', onSocketReconnect);
       
       endCall(false);
     };
@@ -683,6 +707,19 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     }
   };
 
+  const requestPeerRepair = (userId, reason) => {
+    if (!userId || !localStreamRef.current) return;
+    const now = Date.now();
+    if (now - (peerRepairCooldownRef.current[userId] || 0) < 10000) return;
+    peerRepairCooldownRef.current[userId] = now;
+    const peer = peersRef.current[userId];
+    if (peer && !peer.destroyed) peer.destroy();
+    delete peersRef.current[userId];
+    console.warn('[Call] Reconstruindo conexão com participante', { userId, reason });
+    setCallNotice('Reconectando o áudio da chamada…');
+    getSocket()?.emit('call:repair', { channelId: channel._id, recipientId: userId });
+  };
+
   /**
    * Cria uma conexão peer
    */
@@ -766,7 +803,30 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
 
     peer.on('error', (error) => {
       console.error('Erro no peer:', error);
+      requestPeerRepair(userId, error.message || 'erro WebRTC');
     });
+
+    const connection = peer._pc;
+    if (connection?.addEventListener) {
+      let disconnectedTimer = null;
+      const checkConnection = () => {
+        const state = connection.connectionState || connection.iceConnectionState;
+        if (state === 'failed' || state === 'closed') {
+          requestPeerRepair(userId, `estado WebRTC: ${state}`);
+        } else if (state === 'disconnected') {
+          window.clearTimeout(disconnectedTimer);
+          disconnectedTimer = window.setTimeout(() => {
+            const currentState = connection.connectionState || connection.iceConnectionState;
+            if (currentState === 'disconnected') requestPeerRepair(userId, 'WebRTC desconectado');
+          }, 5000);
+        } else {
+          window.clearTimeout(disconnectedTimer);
+        }
+      };
+      connection.addEventListener('connectionstatechange', checkConnection);
+      connection.addEventListener('iceconnectionstatechange', checkConnection);
+      peer.on('close', () => window.clearTimeout(disconnectedTimer));
+    }
 
     peersRef.current[userId] = peer;
     return peer;
@@ -917,6 +977,16 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         console.error('Erro ao processar sinal da chamada:', error);
       }
     }
+  };
+
+  const handleCallRepair = ({ channelId, requestedBy, initiatorId }) => {
+    if (channelId !== channel._id || !localStreamRef.current || String(requestedBy) === currentUserId) return;
+    const oldPeer = peersRef.current[requestedBy];
+    if (oldPeer && !oldPeer.destroyed) oldPeer.destroy();
+    delete peersRef.current[requestedBy];
+    if (String(initiatorId) !== currentUserId) return;
+    const participant = participants.find((item) => String(item.userId) === String(requestedBy));
+    createPeer(requestedBy, true, participant?.avatar, participant?.username, participant?.isScreenSharing);
   };
 
   const handleCallEnd = ({ userId }) => {

@@ -5,6 +5,7 @@ const Message = require('../models/Message');
 const activeCalls = new Map();
 const activeScreenShares = new Map();
 const jukeboxes = new Map();
+const jukeboxTimers = new Map();
 
 /**
  * Configuração do Socket.io para comunicação em tempo real
@@ -254,6 +255,16 @@ module.exports = (io) => {
       });
     });
 
+    socket.on('call:repair', ({ channelId, recipientId }) => {
+      if (!channelId || !recipientId || !socket.rooms.has(`call:${channelId}`)) return;
+      io.to(`user:${recipientId}`).emit('call:repair', {
+        channelId,
+        requestedBy: socket.user._id.toString(),
+        // Somente um lado cria a nova oferta, evitando duas ofertas ao mesmo tempo.
+        initiatorId: [socket.user._id.toString(), String(recipientId)].sort()[0]
+      });
+    });
+
     socket.on('jukebox:state', ({ channelId }) => {
       if (!socket.rooms.has(`call:${channelId}`)) return;
       socket.emit('jukebox:state', getJukeboxState(channelId));
@@ -268,11 +279,13 @@ module.exports = (io) => {
         title: String(track.title).slice(0, 200),
         channelTitle: String(track.channelTitle || '').slice(0, 120),
         thumbnail: String(track.thumbnail || ''),
+        durationSeconds: Math.max(0, Math.min(Number(track.durationSeconds) || 0, 24 * 60 * 60)),
         requestedBy: socket.user.username
       });
       if (!jukebox.current) startNext(jukebox);
       jukeboxes.set(channelId, jukebox);
       broadcastJukebox(io, channelId);
+      scheduleJukeboxAdvance(io, channelId, jukebox);
     });
 
     socket.on('jukebox:control', ({ channelId, action, videoId, changedAt }) => {
@@ -297,6 +310,7 @@ module.exports = (io) => {
       }
       jukebox.changedAt = Date.now();
       broadcastJukebox(io, channelId);
+      scheduleJukeboxAdvance(io, channelId, jukebox);
     });
 
     socket.on('call:end', (data) => {
@@ -393,6 +407,25 @@ function startNext(jukebox) {
   jukebox.status = jukebox.current ? 'playing' : 'paused';
   jukebox.position = 0;
   jukebox.changedAt = Date.now();
+}
+
+function scheduleJukeboxAdvance(io, channelId, jukebox) {
+  clearTimeout(jukeboxTimers.get(channelId));
+  jukeboxTimers.delete(channelId);
+  if (!jukebox?.current || jukebox.status !== 'playing' || !jukebox.current.durationSeconds) return;
+
+  const remainingMs = Math.max(1000, (jukebox.current.durationSeconds - jukebox.position) * 1000 + 1500);
+  const expectedVideoId = jukebox.current.videoId;
+  const expectedChangedAt = jukebox.changedAt;
+  const timer = setTimeout(() => {
+    const current = jukeboxes.get(channelId);
+    if (!current || current.current?.videoId !== expectedVideoId || current.changedAt !== expectedChangedAt || current.status !== 'playing') return;
+    startNext(current);
+    current.changedAt = Date.now();
+    broadcastJukebox(io, channelId);
+    scheduleJukeboxAdvance(io, channelId, current);
+  }, remainingMs);
+  jukeboxTimers.set(channelId, timer);
 }
 
 function getJukeboxState(channelId) {
