@@ -128,6 +128,29 @@
   overflow-y: auto;
 }
 
+/* Quatro ou mais telas não devem disputar uma única área expandida. A grade
+   mantém todos os participantes visíveis e cria novas linhas quando necessário. */
+.videos-grid.screen-share-count-4,
+.videos-grid.screen-share-count-5,
+.videos-grid.screen-share-count-6 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-content: stretch;
+  gap: 12px;
+}
+
+.videos-grid.screen-share-count-4 .video-wrapper,
+.videos-grid.screen-share-count-5 .video-wrapper,
+.videos-grid.screen-share-count-6 .video-wrapper {
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .videos-grid.screen-share-count-5,
+  .videos-grid.screen-share-count-6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
   .call-stage {
     flex-direction: column;

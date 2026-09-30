@@ -1135,6 +1135,9 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     }
   };
 
+  const activeScreenShareCount = participants.filter((participant) => participant.isScreenSharing).length
+    + (isScreenSharing ? 1 : 0);
+
   return (
     <div className="video-call-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.95)', zIndex: 9999 }}>
       <div className="video-call-container">
@@ -1163,10 +1166,10 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         ) : (
           <>
             <div className="call-stage">
-              <div className="videos-grid">
+              <div className={`videos-grid screen-share-count-${Math.min(activeScreenShareCount, 6)}`}>
               {/* Vídeo local */}
               <div
-                className={`video-wrapper ${speakingUsers[currentUserId] ? 'speaking' : ''} ${(isScreenSharing || expandedParticipantId === 'local') ? 'screen-expanded' : ''}`}
+                className={`video-wrapper ${speakingUsers[currentUserId] ? 'speaking' : ''} ${isScreenSharing ? 'is-screen-share' : ''} ${expandedParticipantId === 'local' ? 'screen-expanded' : ''}`}
                 onClick={() => isScreenSharing && setExpandedParticipantId(expandedParticipantId === 'local' ? null : 'local')}
               >
                 <video
@@ -1416,7 +1419,7 @@ function ParticipantVideo({
 
   return (
     <div
-      className={`video-wrapper ${isSpeaking ? 'speaking' : ''} ${isExpanded ? 'screen-expanded' : ''}`}
+      className={`video-wrapper ${isSpeaking ? 'speaking' : ''} ${participant.isScreenSharing ? 'is-screen-share' : ''} ${isExpanded ? 'screen-expanded' : ''}`}
       onClick={participant.isScreenSharing ? onExpand : undefined}
     >
       <video
