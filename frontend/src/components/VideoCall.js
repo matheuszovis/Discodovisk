@@ -519,9 +519,17 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     keepAlive.connect(audioContext.destination);
 
     screenAudioInputRef.current = (chunk) => {
-      const bytes = chunk?.type === 'Buffer' && Array.isArray(chunk.data)
-        ? Uint8Array.from(chunk.data)
-        : new Uint8Array(chunk.buffer, chunk.byteOffset || 0, chunk.byteLength);
+      const bytes = chunk instanceof ArrayBuffer
+        ? new Uint8Array(chunk)
+        : chunk?.type === 'Buffer' && Array.isArray(chunk.data)
+          ? Uint8Array.from(chunk.data)
+          : ArrayBuffer.isView(chunk)
+            ? new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+            : null;
+      if (!bytes) {
+        console.warn('[ShareAudio] Formato PCM não reconhecido; a faixa não será enviada.', { type: typeof chunk });
+        return;
+      }
       const frameCount = Math.floor(bytes.byteLength / 4);
       if (!frameCount) return;
 
