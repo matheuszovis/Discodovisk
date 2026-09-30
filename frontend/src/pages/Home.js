@@ -27,6 +27,7 @@ function Home() {
   const [updateStatus, setUpdateStatus] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateVersion, setUpdateVersion] = useState('');
+  const [requiredUpdate, setRequiredUpdate] = useState(null);
   const { updateProfile } = useAuth();
 
   useEffect(() => {
@@ -35,6 +36,7 @@ function Home() {
     return window.electronAPI.onUpdateAvailable(({ version }) => {
       setUpdateVersion(version);
       setUpdateStatus(`Baixando a versão ${version}: 0%`);
+      setRequiredUpdate({ version, percent: 0, downloaded: false, error: '' });
     });
   }, []);
 
@@ -43,6 +45,7 @@ function Home() {
 
     return window.electronAPI.onUpdateDownloadProgress(({ percent }) => {
       setUpdateStatus(`Baixando a versão ${updateVersion || 'nova'}: ${percent}%`);
+      setRequiredUpdate((current) => current ? { ...current, percent, error: '' } : current);
     });
   }, [updateVersion]);
 
@@ -52,8 +55,20 @@ function Home() {
     return window.electronAPI.onUpdateError(({ message }) => {
       setUpdateStatus(`Erro ao atualizar: ${message}`);
       setCheckingUpdate(false);
+      setRequiredUpdate((current) => current ? { ...current, error: message } : current);
     });
   }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateDownloaded) return undefined;
+    return window.electronAPI.onUpdateDownloaded(({ version }) => {
+      setRequiredUpdate((current) => ({
+        version: version || current?.version || 'nova', percent: 100, downloaded: true, error: ''
+      }));
+    });
+  }, []);
+
+  const installRequiredUpdate = () => window.electronAPI?.installRequiredUpdate?.();
 
   const handleSelectChannel = (channel) => {
     setSelectedChannel(channel);
@@ -159,6 +174,22 @@ function Home() {
 
   return (
     <div className="home-container">
+      {requiredUpdate && (
+        <section className="required-update" role="alertdialog" aria-modal="true" aria-label="Atualização obrigatória">
+          <div className="required-update-card">
+            <h1>Atualização obrigatória</h1>
+            <p>A versão {requiredUpdate.version} é necessária para continuar usando o Discordovisk.</p>
+            {requiredUpdate.downloaded ? (
+              <button type="button" onClick={installRequiredUpdate}>Reiniciar e atualizar</button>
+            ) : requiredUpdate.error ? (
+              <><p className="required-update-error">Não foi possível baixar a atualização: {requiredUpdate.error}.</p>
+              <button type="button" onClick={handleCheckForUpdates}>Tentar novamente</button></>
+            ) : (
+              <><progress value={requiredUpdate.percent} max="100" /><strong>Baixando: {requiredUpdate.percent}%</strong></>
+            )}
+          </div>
+        </section>
+      )}
       <div className="app-version" title="Versão do aplicativo">v{packageInfo.version}</div>
       <button
         onClick={handleCheckForUpdates}

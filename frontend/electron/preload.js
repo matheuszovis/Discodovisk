@@ -30,5 +30,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (event, error) => callback(error);
     ipcRenderer.on('updater:error', listener);
     return () => ipcRenderer.removeListener('updater:error', listener);
-  }
+  },
+  onUpdateDownloaded: (callback) => {
+    const listener = (event, update) => callback(update);
+    ipcRenderer.on('updater:downloaded', listener);
+    return () => ipcRenderer.removeListener('updater:downloaded', listener);
+  },
+  installRequiredUpdate: () => ipcRenderer.invoke('updater:install-required')
 });

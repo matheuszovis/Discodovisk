@@ -10,6 +10,8 @@ let selectedScreenProcessId = null;
 let processAudioCapture = null;
 let processAudioDiagnosticTimer = null;
 let updateDownloadPromise = null;
+let requiredUpdateInfo = null;
+let downloadedUpdateInfo = null;
 
 const getWindowProcessId = (sourceId) => new Promise((resolve, reject) => {
   // Fontes de janela do Electron usam o formato "window:<HWND>:<índice>".
@@ -70,6 +72,7 @@ const configureUpdaterFeed = () => {
 const startUpdateDownload = (info) => {
   if (updateDownloadPromise) return updateDownloadPromise;
 
+  requiredUpdateInfo = { version: info.version };
   mainWindow?.webContents.send('updater:available', { version: info.version });
   updateDownloadPromise = autoUpdater.downloadUpdate()
     .catch((error) => {
@@ -99,14 +102,16 @@ const setupAutoUpdater = () => {
     });
   });
   autoUpdater.on('update-downloaded', async (info) => {
+    downloadedUpdateInfo = { version: info.version };
+    mainWindow?.webContents.send('updater:downloaded', downloadedUpdateInfo);
     const { response } = await dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Atualização disponível',
       message: `Uma nova versão do Discordovisk (${info.version}) foi baixada.`,
       detail: 'Reinicie agora para aplicar a atualização.',
-      buttons: ['Reiniciar agora', 'Depois'],
+      buttons: ['Reiniciar agora'],
       defaultId: 0,
-      cancelId: 1
+      cancelId: 0
     });
 
     if (response === 0) autoUpdater.quitAndInstall();
@@ -147,6 +152,12 @@ ipcMain.handle('updater:check', async () => {
     }
     return { status: 'error', message: error.message || 'Não foi possível verificar atualizações.' };
   }
+});
+
+ipcMain.handle('updater:install-required', () => {
+  if (!downloadedUpdateInfo) return { ok: false, message: 'A atualização ainda está sendo baixada.' };
+  autoUpdater.quitAndInstall();
+  return { ok: true };
 });
 
 ipcMain.handle('screen-sources:list', async () => {
@@ -269,6 +280,11 @@ const createWindow = () => {
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'build', 'index.html'));
   }
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (requiredUpdateInfo) mainWindow.webContents.send('updater:available', requiredUpdateInfo);
+    if (downloadedUpdateInfo) mainWindow.webContents.send('updater:downloaded', downloadedUpdateInfo);
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
