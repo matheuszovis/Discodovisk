@@ -15,6 +15,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isScreenAudioMuted, setIsScreenAudioMuted] = useState(false);
+  const [shareSystemAudio, setShareSystemAudio] = useState(false);
   const [participants, setParticipants] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState({});
   const [expandedParticipantId, setExpandedParticipantId] = useState(null);
@@ -371,6 +373,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       }
 
       setIsScreenSharing(false);
+      setIsScreenAudioMuted(false);
 
       isScreenSharingRef.current = false;
       Object.entries(screenPeersRef.current).forEach(([key, peer]) => {
@@ -400,15 +403,27 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
 
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: { cursor: 'always' },
-          audio: true
+          audio: false
         });
 
         await startScreenShare(screenStream);
+        setCallNotice('No navegador, a transmissão é iniciada sem áudio para evitar capturar o sistema inteiro. Use o aplicativo Windows para áudio exclusivo por janela.');
       } catch (error) {
         console.error('Erro ao compartilhar tela:', error);
         alert('Erro ao compartilhar tela. Verifique as permissões.');
       }
     }
+  };
+
+  const toggleScreenAudio = () => {
+    const tracks = screenStreamRef.current?.getAudioTracks() || [];
+    if (!tracks.length) {
+      setCallNotice('Esta transmissão não possui uma faixa de áudio para controlar.');
+      return;
+    }
+    const nextMuted = !isScreenAudioMuted;
+    tracks.forEach((track) => { track.enabled = !nextMuted; });
+    setIsScreenAudioMuted(nextMuted);
   };
 
   const stopProcessAudioCapture = () => {
@@ -425,10 +440,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   };
 
   const startProcessAudioCapture = async (processId) => {
-    const canCapture = processId
-      ? window.electronAPI?.startScreenAudioCapture
-      : window.electronAPI?.startSystemAudioCapture;
-    if (!canCapture) return null;
+    if (!window.electronAPI?.startScreenAudioCapture || !processId) return null;
 
     const audioContext = new AudioContext({ sampleRate: 48000 });
     const destination = audioContext.createMediaStreamDestination();
@@ -483,9 +495,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       if (queue.length > 25) queue.splice(0, queue.length - 25);
     };
 
-    const result = processId
-      ? await window.electronAPI.startScreenAudioCapture(processId)
-      : await window.electronAPI.startSystemAudioCapture();
+    const result = await window.electronAPI.startScreenAudioCapture(processId);
     if (!result?.ok) {
       stopProcessAudioCapture();
       throw new Error(result?.message || 'Não foi possível capturar o áudio da janela.');
@@ -499,6 +509,10 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     const preferProcessAudio = async () => {
       if (!processId || !window.electronAPI?.startScreenAudioCapture) return;
       const nativeAudioTracks = screenStream.getAudioTracks();
+      nativeAudioTracks.forEach((track) => {
+        screenStream.removeTrack(track);
+        track.stop();
+      });
       try {
         const processAudioTrack = await startProcessAudioCapture(processId);
         if (!processAudioTrack) return;
@@ -509,11 +523,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         screenStream.addTrack(processAudioTrack);
       } catch (error) {
         stopProcessAudioCapture();
-        if (nativeAudioTracks.length) {
-          console.warn('Captura exclusiva indisponível; usando áudio nativo.', error);
-        }
-        // Mantém a tentativa nativa já existente abaixo, que exibe o aviso
-        // sem interromper a transmissão de vídeo se ela também falhar.
+        setCallNotice(`A imagem será transmitida sem áudio: ${error.message}`);
       }
     };
 
@@ -521,7 +531,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         // O Electron fornece o áudio do sistema junto com getDisplayMedia quando
         // solicitado. A captura por processo é somente uma reserva para casos
         // em que o Windows não tenha criado uma faixa de áudio nativa.
-        if ((await preferProcessAudio(), !screenStream.getAudioTracks().length) && window.electronAPI?.startScreenAudioCapture) {
+        if ((await preferProcessAudio(), false) && window.electronAPI?.startScreenAudioCapture) {
           if (processId) {
             try {
               const processAudioTrack = await startProcessAudioCapture(processId);
@@ -538,7 +548,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         // Ao compartilhar a tela inteira não existe um processo único. Se o
         // Electron não criou uma faixa nativa, capturamos a saída padrão do
         // Windows para que a transmissão ainda tenha som.
-        if (!screenStream.getAudioTracks().length && !processId && window.electronAPI?.startSystemAudioCapture) {
+        if (false && !screenStream.getAudioTracks().length && !processId && window.electronAPI?.startSystemAudioCapture) {
           try {
             const systemAudioTrack = await startProcessAudioCapture(null);
             if (systemAudioTrack) screenStream.addTrack(systemAudioTrack);
@@ -546,6 +556,12 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
             stopProcessAudioCapture();
             setCallNotice(`A imagem será transmitida sem áudio: ${error.message}`);
           }
+        }
+
+        if (!screenStream.getAudioTracks().length) {
+          setCallNotice(processId
+            ? 'A imagem será transmitida sem áudio exclusivo; o áudio global não será usado.'
+            : 'A tela será transmitida sem áudio. Ative “Incluir áudio do sistema” se quiser compartilhá-lo.');
         }
 
         if (!screenStream.getVideoTracks().some(track => track.readyState === 'live')) {
@@ -593,8 +609,12 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         throw new Error('O aplicativo não confirmou a fonte de tela selecionada.');
       }
       let screenStream;
+      const requestSystemAudio = !source.isWindow && shareSystemAudio;
       try {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: requestSystemAudio
+        });
       } catch (error) {
         if (!['NotReadableError', 'NotSupportedError'].includes(error.name)) throw error;
         screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: false });
@@ -602,6 +622,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       }
       setScreenSources([]);
       await startScreenShare(screenStream, selection?.processId);
+      setIsScreenAudioMuted(false);
     } catch (error) {
       console.error('Erro ao capturar a fonte escolhida:', error);
       setCallNotice(`Não foi possível compartilhar essa tela ou janela: ${error.name}: ${error.message}`);
@@ -1095,6 +1116,15 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                     <button type="button" onClick={() => setScreenSources([])} title="Cancelar">✕</button>
                   </div>
                   <p>Escolha uma janela ou tela. O áudio continua tocando normalmente no seu computador durante a transmissão.</p>
+                  <label className="screen-share-audio-choice">
+                    <input
+                      type="checkbox"
+                      checked={shareSystemAudio}
+                      onChange={(event) => setShareSystemAudio(event.target.checked)}
+                    />
+                    Incluir áudio do sistema ao compartilhar a tela inteira
+                    <small>Janelas e jogos usam apenas o áudio exclusivo do aplicativo selecionado.</small>
+                  </label>
                   <div className="screen-source-grid">
                     {screenSources.map((source) => (
                       <button
@@ -1138,6 +1168,16 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
               >
                 {isScreenSharing ? '🖥️' : '💻'}
               </button>
+
+              {isScreenSharing && (
+                <button
+                  onClick={toggleScreenAudio}
+                  className={`control-btn ${isScreenAudioMuted ? 'active' : ''}`}
+                  title={isScreenAudioMuted ? 'Ativar áudio da transmissão' : 'Silenciar áudio da transmissão'}
+                >
+                  {isScreenAudioMuted ? '🔇' : '🔊'}
+                </button>
+              )}
 
               <button
                 onClick={endCall}

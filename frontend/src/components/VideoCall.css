@@ -337,6 +337,22 @@
   gap: 12px;
 }
 
+.screen-share-audio-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px;
+  border-radius: 6px;
+  color: #f2f3f5;
+  background: #202225;
+  font-size: 13px;
+}
+
+.screen-share-audio-choice input { accent-color: #5865f2; }
+.screen-share-audio-choice small { flex-basis: 100%; color: #b9bbbe; }
+
 .screen-source-option {
   display: flex;
   flex-direction: column;
