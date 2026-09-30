@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('screen-audio:chunk', listener);
     return () => ipcRenderer.removeListener('screen-audio:chunk', listener);
   },
+  onScreenAudioDiagnostic: (callback) => {
+    const listener = (event, diagnostic) => callback(diagnostic);
+    ipcRenderer.on('screen-audio:diagnostic', listener);
+    return () => ipcRenderer.removeListener('screen-audio:diagnostic', listener);
+  },
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   onUpdateDownloadProgress: (callback) => {
     const listener = (event, progress) => callback(progress);

@@ -8,6 +8,7 @@ let selectedScreenSourceId = null;
 let mainWindow = null;
 let selectedScreenProcessId = null;
 let processAudioCapture = null;
+let processAudioDiagnosticTimer = null;
 let updateDownloadPromise = null;
 
 const getWindowProcessId = (sourceId) => new Promise((resolve, reject) => {
@@ -39,6 +40,8 @@ const getWindowProcessId = (sourceId) => new Promise((resolve, reject) => {
 });
 
 const stopProcessAudioCapture = () => {
+  clearTimeout(processAudioDiagnosticTimer);
+  processAudioDiagnosticTimer = null;
   if (!processAudioCapture) return;
   try {
     processAudioCapture.stop();
@@ -169,6 +172,7 @@ ipcMain.handle('screen-source:select', async (event, sourceId) => {
 
   try {
     selectedScreenProcessId = await getWindowProcessId(sourceId);
+    console.info('[ShareAudio] Selected source', { sourceId, rootPid: selectedScreenProcessId, includeProcessTree: true });
   } catch (error) {
     console.warn('Não foi possível identificar o processo da janela selecionada:', error);
   }
@@ -187,10 +191,27 @@ ipcMain.handle('screen-audio:start', (event, processId) => {
   }
 
   try {
+    const stats = { chunks: 0, bytes: 0, frames: 0, lastReport: Date.now() };
     processAudioCapture = new loopback.LoopbackCapture();
     processAudioCapture.start(processId, true, (chunk) => {
+      const bytes = Buffer.isBuffer(chunk) ? chunk.length : (chunk?.byteLength || 0);
+      stats.chunks += 1;
+      stats.bytes += bytes;
+      stats.frames += Math.floor(bytes / 4);
+      const now = Date.now();
+      if (now - stats.lastReport >= 2000) {
+        stats.lastReport = now;
+        console.info('[ShareAudio] PCM received', { processId, ...stats, sampleRate: 48000, channels: 2, bitsPerSample: 16 });
+        if (!event.sender.isDestroyed()) event.sender.send('screen-audio:diagnostic', { stage: 'pcm', processId, ...stats });
+      }
       if (!event.sender.isDestroyed()) event.sender.send('screen-audio:chunk', chunk);
     });
+    console.info('[ShareAudio] Process loopback initialized', { processId, includeProcessTree: true, sampleRate: 48000, channels: 2, bitsPerSample: 16 });
+    processAudioDiagnosticTimer = setTimeout(() => {
+      if (!stats.chunks && !event.sender.isDestroyed()) {
+        event.sender.send('screen-audio:diagnostic', { stage: 'capture', status: 'no-frames', processId });
+      }
+    }, 4000);
     return { ok: true };
   } catch (error) {
     console.error('Erro ao iniciar a captura de áudio exclusiva:', error);

@@ -41,6 +41,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const screenAudioKeepAliveRef = useRef(null);
   const screenAudioQueueRef = useRef([]);
   const screenAudioInputRef = useRef(null);
+  const screenAudioStatsRef = useRef(null);
   const isScreenSharingRef = useRef(false);
   const selectingScreenRef = useRef(false);
   const currentUserId = String(user?.id || user?._id || '');
@@ -118,6 +119,16 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     if (!window.electronAPI?.onScreenAudioChunk) return undefined;
     return window.electronAPI.onScreenAudioChunk((chunk) => {
       screenAudioInputRef.current?.(chunk);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onScreenAudioDiagnostic) return undefined;
+    return window.electronAPI.onScreenAudioDiagnostic((diagnostic) => {
+      console.info('[ShareAudio]', diagnostic);
+      if (diagnostic?.status === 'no-frames') {
+        setCallNotice('Não recebemos áudio do processo selecionado. Escolha a janela do jogo que realmente produz o som; o áudio global não será usado.');
+      }
     });
   }, []);
 
@@ -429,6 +440,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const stopProcessAudioCapture = () => {
     screenAudioInputRef.current = null;
     screenAudioQueueRef.current = [];
+    screenAudioStatsRef.current = null;
     screenAudioNodeRef.current?.disconnect();
     screenAudioNodeRef.current = null;
     screenAudioKeepAliveRef.current?.disconnect?.();
@@ -451,6 +463,13 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     screenAudioNodeRef.current = processor;
     screenAudioKeepAliveRef.current = keepAlive;
     screenAudioQueueRef.current = [];
+    screenAudioStatsRef.current = {
+      chunks: 0,
+      frames: 0,
+      peak: 0,
+      sumSquares: 0,
+      lastReport: Date.now()
+    };
 
     processor.onaudioprocess = ({ outputBuffer }) => {
       const left = outputBuffer.getChannelData(0);
@@ -485,9 +504,37 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       const samples = new Int16Array(bytes.buffer, bytes.byteOffset, frameCount * 2);
       const left = new Float32Array(frameCount);
       const right = new Float32Array(frameCount);
+      const stats = screenAudioStatsRef.current;
       for (let index = 0; index < frameCount; index += 1) {
         left[index] = samples[index * 2] / 32768;
         right[index] = samples[index * 2 + 1] / 32768;
+        if (stats) {
+          const samplePeak = Math.max(Math.abs(left[index]), Math.abs(right[index]));
+          stats.peak = Math.max(stats.peak, samplePeak);
+          stats.sumSquares += (left[index] * left[index]) + (right[index] * right[index]);
+        }
+      }
+
+      if (stats) {
+        stats.chunks += 1;
+        stats.frames += frameCount;
+        const now = Date.now();
+        if (now - stats.lastReport >= 2000) {
+          const rms = stats.frames ? Math.sqrt(stats.sumSquares / (stats.frames * 2)) : 0;
+          console.info('[ShareAudio] PCM converted', {
+            chunks: stats.chunks,
+            frames: stats.frames,
+            peak: Number(stats.peak.toFixed(4)),
+            rms: Number(rms.toFixed(4)),
+            sampleRate: 48000,
+            channels: 2
+          });
+          stats.chunks = 0;
+          stats.frames = 0;
+          stats.peak = 0;
+          stats.sumSquares = 0;
+          stats.lastReport = now;
+        }
       }
 
       const queue = screenAudioQueueRef.current;
@@ -521,6 +568,11 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
           track.stop();
         });
         screenStream.addTrack(processAudioTrack);
+        console.info('[ShareAudio] screenAudioTrack created', {
+          id: processAudioTrack.id,
+          enabled: processAudioTrack.enabled,
+          readyState: processAudioTrack.readyState
+        });
       } catch (error) {
         stopProcessAudioCapture();
         setCallNotice(`A imagem será transmitida sem áudio: ${error.message}`);
@@ -742,11 +794,21 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     if (initiator && screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((track) => {
         peer.addTrack(track, screenStreamRef.current);
+        console.info('[ShareAudio] WebRTC sender added', {
+          kind: track.kind,
+          id: track.id,
+          enabled: track.enabled,
+          readyState: track.readyState
+        });
       });
     }
 
     const receiveScreenStream = (stream) => {
       if (initiator || screenPeersRef.current[key] !== peer) return;
+      console.info('[ShareAudio] WebRTC stream received', {
+        videoTracks: stream.getVideoTracks().length,
+        audioTracks: stream.getAudioTracks().length
+      });
       setParticipants((previousParticipants) => {
         const currentParticipant = previousParticipants.find((participant) => participant.userId === userId) || {
           userId,
@@ -1232,6 +1294,15 @@ function ParticipantVideo({
 
   useEffect(() => {
     configurePlayback(screenAudioRef.current, participant.screenAudioStream, screenShareVolume, outputDevice)
+      .then(() => {
+        if (participant.screenAudioStream) {
+          console.info('[ShareAudio] remote playback configured', {
+            audioTracks: participant.screenAudioStream.getAudioTracks().length,
+            volume: screenShareVolume,
+            outputDevice
+          });
+        }
+      })
       .catch(error => onAudioError(`Não foi possível usar a saída da transmissão: ${error.message}`));
   }, [participant.screenAudioStream, screenShareVolume, outputDevice, onAudioError]);
 
