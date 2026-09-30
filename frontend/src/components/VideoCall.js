@@ -36,6 +36,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const screenStreamRef = useRef(null);
   const screenAudioContextRef = useRef(null);
   const screenAudioNodeRef = useRef(null);
+  const screenAudioKeepAliveRef = useRef(null);
   const screenAudioQueueRef = useRef([]);
   const screenAudioInputRef = useRef(null);
   const isScreenSharingRef = useRef(false);
@@ -415,6 +416,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     screenAudioQueueRef.current = [];
     screenAudioNodeRef.current?.disconnect();
     screenAudioNodeRef.current = null;
+    screenAudioKeepAliveRef.current?.disconnect?.();
+    screenAudioKeepAliveRef.current = null;
     const audioContext = screenAudioContextRef.current;
     screenAudioContextRef.current = null;
     audioContext?.close().catch(() => {});
@@ -422,13 +425,19 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   };
 
   const startProcessAudioCapture = async (processId) => {
-    if (!window.electronAPI?.startScreenAudioCapture || !processId) return null;
+    const canCapture = processId
+      ? window.electronAPI?.startScreenAudioCapture
+      : window.electronAPI?.startSystemAudioCapture;
+    if (!canCapture) return null;
 
     const audioContext = new AudioContext({ sampleRate: 48000 });
     const destination = audioContext.createMediaStreamDestination();
     const processor = audioContext.createScriptProcessor(2048, 0, 2);
+    const keepAlive = audioContext.createGain();
+    keepAlive.gain.value = 0;
     screenAudioContextRef.current = audioContext;
     screenAudioNodeRef.current = processor;
+    screenAudioKeepAliveRef.current = keepAlive;
     screenAudioQueueRef.current = [];
 
     processor.onaudioprocess = ({ outputBuffer }) => {
@@ -451,6 +460,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       }
     };
     processor.connect(destination);
+    processor.connect(keepAlive);
+    keepAlive.connect(audioContext.destination);
 
     screenAudioInputRef.current = (chunk) => {
       const bytes = chunk?.type === 'Buffer' && Array.isArray(chunk.data)
@@ -472,7 +483,9 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       if (queue.length > 25) queue.splice(0, queue.length - 25);
     };
 
-    const result = await window.electronAPI.startScreenAudioCapture(processId);
+    const result = processId
+      ? await window.electronAPI.startScreenAudioCapture(processId)
+      : await window.electronAPI.startSystemAudioCapture();
     if (!result?.ok) {
       stopProcessAudioCapture();
       throw new Error(result?.message || 'Não foi possível capturar o áudio da janela.');
@@ -483,11 +496,32 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   };
 
   const startScreenShare = async (screenStream, processId = null) => {
+    const preferProcessAudio = async () => {
+      if (!processId || !window.electronAPI?.startScreenAudioCapture) return;
+      const nativeAudioTracks = screenStream.getAudioTracks();
+      try {
+        const processAudioTrack = await startProcessAudioCapture(processId);
+        if (!processAudioTrack) return;
+        nativeAudioTracks.forEach((track) => {
+          screenStream.removeTrack(track);
+          track.stop();
+        });
+        screenStream.addTrack(processAudioTrack);
+      } catch (error) {
+        stopProcessAudioCapture();
+        if (nativeAudioTracks.length) {
+          console.warn('Captura exclusiva indisponível; usando áudio nativo.', error);
+        }
+        // Mantém a tentativa nativa já existente abaixo, que exibe o aviso
+        // sem interromper a transmissão de vídeo se ela também falhar.
+      }
+    };
+
     try {
         // O Electron fornece o áudio do sistema junto com getDisplayMedia quando
         // solicitado. A captura por processo é somente uma reserva para casos
         // em que o Windows não tenha criado uma faixa de áudio nativa.
-        if (!screenStream.getAudioTracks().length && window.electronAPI?.startScreenAudioCapture) {
+        if ((await preferProcessAudio(), !screenStream.getAudioTracks().length) && window.electronAPI?.startScreenAudioCapture) {
           if (processId) {
             try {
               const processAudioTrack = await startProcessAudioCapture(processId);
@@ -498,6 +532,19 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
             }
           } else {
             console.warn('Telas inteiras não possuem um único processo para capturar o áudio exclusivo.');
+          }
+        }
+
+        // Ao compartilhar a tela inteira não existe um processo único. Se o
+        // Electron não criou uma faixa nativa, capturamos a saída padrão do
+        // Windows para que a transmissão ainda tenha som.
+        if (!screenStream.getAudioTracks().length && !processId && window.electronAPI?.startSystemAudioCapture) {
+          try {
+            const systemAudioTrack = await startProcessAudioCapture(null);
+            if (systemAudioTrack) screenStream.addTrack(systemAudioTrack);
+          } catch (error) {
+            stopProcessAudioCapture();
+            setCallNotice(`A imagem será transmitida sem áudio: ${error.message}`);
           }
         }
 

@@ -199,6 +199,22 @@ ipcMain.handle('screen-audio:start', (event, processId) => {
   }
 });
 
+ipcMain.handle('screen-audio:start-system', (event) => {
+  stopProcessAudioCapture();
+
+  try {
+    processAudioCapture = new loopback.LoopbackCapture();
+    processAudioCapture.startSystemAudio((chunk) => {
+      if (!event.sender.isDestroyed()) event.sender.send('screen-audio:chunk', chunk);
+    });
+    return { ok: true };
+  } catch (error) {
+    console.error('Erro ao iniciar a captura de áudio do sistema:', error);
+    stopProcessAudioCapture();
+    return { ok: false, message: error.message || 'Não foi possível capturar o áudio do sistema.' };
+  }
+});
+
 ipcMain.handle('screen-audio:stop', () => {
   stopProcessAudioCapture();
   return { ok: true };

@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getScreenSources: () => ipcRenderer.invoke('screen-sources:list'),
   selectScreenSource: (sourceId) => ipcRenderer.invoke('screen-source:select', sourceId),
   startScreenAudioCapture: (processId) => ipcRenderer.invoke('screen-audio:start', processId),
+  startSystemAudioCapture: () => ipcRenderer.invoke('screen-audio:start-system'),
   stopScreenAudioCapture: () => ipcRenderer.invoke('screen-audio:stop'),
   onUpdateAvailable: (callback) => {
     const listener = (event, update) => callback(update);
