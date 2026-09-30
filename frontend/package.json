@@ -1,6 +1,6 @@
 {
     "name": "discordovisk-frontend",
-    "version": "1.0.28",
+    "version": "1.0.29",
     "description": "Frontend do Discordovisk - Interface de usuário",
     "private": true,
     "homepage": ".",
