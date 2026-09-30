@@ -1210,7 +1210,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                   outputDevice={audioSettings.output}
                   onAudioError={setCallNotice}
                   isSpeaking={Boolean(speakingUsers[participant.userId])}
-                  isExpanded={participant.isScreenSharing || expandedParticipantId === participant.userId}
+                  isExpanded={expandedParticipantId === participant.userId}
                   voiceVolume={participantVolumes[participant.userId] ?? 1}
                   screenShareVolume={screenShareVolumes[participant.userId] ?? 1}
                   onVolumeChange={(volume, isScreenAudio) => setParticipantVolume(
@@ -1374,6 +1374,14 @@ function ParticipantVideo({
         }
       })
       .catch(error => onAudioError(`Não foi possível usar a saída da transmissão: ${error.message}`));
+
+    const tracks = participant.screenAudioStream?.getAudioTracks() || [];
+    const resumeRemoteScreenAudio = () => {
+      configurePlayback(screenAudioRef.current, participant.screenAudioStream, screenShareVolume, outputDevice)
+        .catch(error => onAudioError(`Não foi possível retomar o áudio da transmissão: ${error.message}`));
+    };
+    tracks.forEach((track) => track.addEventListener?.('unmute', resumeRemoteScreenAudio));
+    return () => tracks.forEach((track) => track.removeEventListener?.('unmute', resumeRemoteScreenAudio));
   }, [participant.screenAudioStream, screenShareVolume, outputDevice, onAudioError]);
 
   useEffect(() => {
