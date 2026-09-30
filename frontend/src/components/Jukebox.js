@@ -32,11 +32,35 @@ function Jukebox({ channelId, active }) {
     };
   }, [active, channelId]);
 
+  useEffect(() => {
+    const videoId = jukebox?.current?.videoId;
+    const changedAt = jukebox?.changedAt;
+    if (!active || !videoId || !changedAt) return undefined;
+
+    const onPlayerMessage = (event) => {
+      if (!['https://www.youtube.com', 'https://www.youtube-nocookie.com'].includes(event.origin)) return;
+      let message;
+      try {
+        message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+      } catch {
+        return;
+      }
+      if (message?.event !== 'onStateChange' || Number(message.info) !== 0) return;
+      getSocket()?.emit('jukebox:control', { channelId, action: 'ended', videoId, changedAt });
+    };
+
+    window.addEventListener('message', onPlayerMessage);
+    return () => window.removeEventListener('message', onPlayerMessage);
+  }, [active, channelId, jukebox?.current?.videoId, jukebox?.changedAt]);
+
   const playerUrl = useMemo(() => {
     if (!jukebox?.current?.videoId) return '';
     const start = Math.max(0, Math.floor(jukebox.position || 0));
     const autoplay = playerEnabled && jukebox.status === 'playing' ? '1' : '0';
-    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(jukebox.current.videoId)}?autoplay=${autoplay}&start=${start}&playsinline=1&rel=0`;
+    const origin = /^https?:$/.test(window.location.protocol)
+      ? `&origin=${encodeURIComponent(window.location.origin)}`
+      : '';
+    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(jukebox.current.videoId)}?enablejsapi=1&autoplay=${autoplay}&start=${start}&playsinline=1&rel=0${origin}`;
   }, [jukebox, playerEnabled]);
 
   const search = async (event) => {

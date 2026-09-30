@@ -275,7 +275,7 @@ module.exports = (io) => {
       broadcastJukebox(io, channelId);
     });
 
-    socket.on('jukebox:control', ({ channelId, action }) => {
+    socket.on('jukebox:control', ({ channelId, action, videoId, changedAt }) => {
       if (!socket.rooms.has(`call:${channelId}`)) return;
       const jukebox = jukeboxes.get(channelId);
       if (!jukebox) return;
@@ -285,6 +285,12 @@ module.exports = (io) => {
       } else if (action === 'play' && jukebox.current) {
         jukebox.status = 'playing';
       } else if (action === 'skip') {
+        startNext(jukebox);
+      } else if (action === 'ended'
+        && jukebox.current?.videoId === videoId
+        && jukebox.changedAt === changedAt) {
+        // Vários players podem receber o evento de fim ao mesmo tempo. Só o
+        // primeiro evento referente à faixa/estado atual pode avançar a fila.
         startNext(jukebox);
       } else {
         return;
