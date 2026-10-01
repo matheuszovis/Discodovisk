@@ -160,6 +160,13 @@ ipcMain.handle('updater:install-required', () => {
   return { ok: true };
 });
 
+ipcMain.handle('app:clear-cache', async () => {
+  // clearCache remove scripts/imagens/mídia HTTP em cache, mas preserva cookies,
+  // localStorage e IndexedDB — portanto a sessão/login do usuário continua.
+  await session.defaultSession.clearCache();
+  return { ok: true };
+});
+
 ipcMain.handle('screen-sources:list', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['screen', 'window'],
@@ -326,8 +333,15 @@ app.whenReady().then(() => {
     const allowedPermissions = ['media', 'display-capture', 'camera', 'microphone'];
     return allowedPermissions.includes(permission);
   });
-  createWindow();
-  if (app.isPackaged) setupAutoUpdater();
+  // O frontend é carregado do Render. Limpar só o cache HTTP evita que o
+  // executável mostre JS/CSS de uma versão anterior após uma atualização, sem
+  // apagar o login salvo no perfil do Chromium.
+  session.defaultSession.clearCache().catch((error) => {
+    console.warn('Não foi possível limpar o cache de atualização:', error);
+  }).finally(() => {
+    createWindow();
+    if (app.isPackaged) setupAutoUpdater();
+  });
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

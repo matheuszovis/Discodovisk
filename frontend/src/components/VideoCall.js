@@ -651,6 +651,12 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         if (!screenStream.getVideoTracks().some(track => track.readyState === 'live')) {
           throw new Error('A janela foi fechada ou não forneceu uma faixa de vídeo. Selecione novamente.');
         }
+        const screenVideoTrack = screenStream.getVideoTracks()[0];
+        try { screenVideoTrack.contentHint = 'detail'; } catch { /* hint não é suportado em todos os Chromium */ }
+        screenVideoTrack.addEventListener?.('mute', () => {
+          setCallNotice('A janela compartilhada parou de fornecer imagem. Se ela estiver preta, feche e compartilhe novamente; aplicativos executados como administrador ou conteúdo protegido podem bloquear a captura.');
+        });
+        screenVideoTrack.addEventListener?.('unmute', () => setCallNotice(''));
         screenStreamRef.current = screenStream;
         isScreenSharingRef.current = true;
 

@@ -70,6 +70,20 @@ function Home() {
 
   const installRequiredUpdate = () => window.electronAPI?.installRequiredUpdate?.();
 
+  const clearApplicationCache = async () => {
+    if (!window.electronAPI?.clearApplicationCache) {
+      setUpdateStatus('A limpeza de cache funciona apenas no aplicativo instalado.');
+      return;
+    }
+    setUpdateStatus('Limpando arquivos temporários e recarregando…');
+    try {
+      await window.electronAPI.clearApplicationCache();
+      window.location.reload();
+    } catch (error) {
+      setUpdateStatus(`Não foi possível limpar o cache: ${error.message}`);
+    }
+  };
+
   const handleSelectChannel = (channel) => {
     setSelectedChannel(channel);
   };
@@ -199,6 +213,13 @@ function Home() {
       >
         {checkingUpdate ? '⏳' : '🔄'}
       </button>
+      <button
+        type="button"
+        onClick={clearApplicationCache}
+        className="btn-clear-cache"
+        title="Limpar cache sem sair da conta"
+        aria-label="Limpar cache sem sair da conta"
+      >🧹</button>
       {/* Barra lateral com lista de servidores */}
       <ServerList 
         selectedServer={selectedServer}

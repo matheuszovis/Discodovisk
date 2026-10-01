@@ -36,5 +36,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('updater:downloaded', listener);
     return () => ipcRenderer.removeListener('updater:downloaded', listener);
   },
-  installRequiredUpdate: () => ipcRenderer.invoke('updater:install-required')
+  installRequiredUpdate: () => ipcRenderer.invoke('updater:install-required'),
+  clearApplicationCache: () => ipcRenderer.invoke('app:clear-cache')
 });
