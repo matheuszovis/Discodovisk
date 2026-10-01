@@ -328,15 +328,6 @@ function Home() {
                 onChange={handleAvatarFile}
                 disabled={savingProfile}
               />
-              <label htmlFor="avatar-url">Ou use uma URL</label>
-              <input
-                id="avatar-url"
-                type="url"
-                value={avatarUrl}
-                onChange={(event) => setAvatarUrl(event.target.value)}
-                placeholder="https://exemplo.com/minha-foto.jpg"
-                disabled={savingProfile}
-              />
               {profileError && <p className="profile-error">{profileError}</p>}
               <div className="profile-modal-actions">
                 <button
