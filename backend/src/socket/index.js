@@ -265,6 +265,16 @@ module.exports = (io) => {
       });
     });
 
+    // A tela usa um peer separado da voz. Quando o receptor perde apenas essa
+    // conexão, ele pede ao dono da tela uma oferta nova sem sair da chamada.
+    socket.on('call:screen-repair', ({ channelId, screenOwnerId }) => {
+      if (!channelId || !screenOwnerId || !socket.rooms.has(`call:${channelId}`)) return;
+      io.to(`user:${screenOwnerId}`).emit('call:screen-repair', {
+        channelId,
+        requesterId: socket.user._id.toString()
+      });
+    });
+
     socket.on('jukebox:state', ({ channelId }) => {
       if (!socket.rooms.has(`call:${channelId}`)) return;
       socket.emit('jukebox:state', getJukeboxState(channelId));

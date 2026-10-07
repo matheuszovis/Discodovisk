@@ -209,6 +209,17 @@
   background: #000;
 }
 
+.screen-connecting-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: #dcddde;
+  font-size: 13px;
+  background: #151619;
+}
+
 .video-label {
   position: absolute;
   bottom: 8px;

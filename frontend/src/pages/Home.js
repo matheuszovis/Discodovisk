@@ -28,6 +28,7 @@ function Home() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateVersion, setUpdateVersion] = useState('');
   const [requiredUpdate, setRequiredUpdate] = useState(null);
+  const [screenShareCompatibilityMode, setScreenShareCompatibilityMode] = useState(false);
   const { updateProfile } = useAuth();
 
   useEffect(() => {
@@ -68,6 +69,12 @@ function Home() {
     });
   }, []);
 
+  useEffect(() => {
+    window.electronAPI?.getScreenShareCompatibilityMode?.()
+      .then(({ enabled }) => setScreenShareCompatibilityMode(Boolean(enabled)))
+      .catch(() => {});
+  }, []);
+
   const installRequiredUpdate = () => window.electronAPI?.installRequiredUpdate?.();
 
   const clearApplicationCache = async () => {
@@ -81,6 +88,16 @@ function Home() {
       window.location.reload();
     } catch (error) {
       setUpdateStatus(`Não foi possível limpar o cache: ${error.message}`);
+    }
+  };
+
+  const changeScreenShareCompatibilityMode = async (enabled) => {
+    if (!window.electronAPI?.setScreenShareCompatibilityMode) return;
+    setUpdateStatus('Aplicando modo de compatibilidade e reiniciando o aplicativo…');
+    try {
+      await window.electronAPI.setScreenShareCompatibilityMode(enabled);
+    } catch (error) {
+      setUpdateStatus(`Não foi possível alterar o modo de compatibilidade: ${error.message}`);
     }
   };
 
@@ -328,6 +345,19 @@ function Home() {
                 onChange={handleAvatarFile}
                 disabled={savingProfile}
               />
+              {window.electronAPI?.setScreenShareCompatibilityMode && (
+                <label className="screen-share-compatibility">
+                  <input
+                    type="checkbox"
+                    checked={screenShareCompatibilityMode}
+                    onChange={(event) => changeScreenShareCompatibilityMode(event.target.checked)}
+                  />
+                  <span>
+                    Modo compatibilidade de transmissão
+                    <small>Use se sua tela fica preta para outras pessoas. O aplicativo será reiniciado, sem sair da conta.</small>
+                  </span>
+                </label>
+              )}
               {profileError && <p className="profile-error">{profileError}</p>}
               <div className="profile-modal-actions">
                 <button

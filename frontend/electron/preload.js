@@ -37,5 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('updater:downloaded', listener);
   },
   installRequiredUpdate: () => ipcRenderer.invoke('updater:install-required'),
-  clearApplicationCache: () => ipcRenderer.invoke('app:clear-cache')
+  clearApplicationCache: () => ipcRenderer.invoke('app:clear-cache'),
+  getScreenShareCompatibilityMode: () => ipcRenderer.invoke('screen-share:get-compatibility-mode'),
+  setScreenShareCompatibilityMode: (enabled) => ipcRenderer.invoke('screen-share:set-compatibility-mode', enabled)
 });

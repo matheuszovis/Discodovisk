@@ -326,6 +326,27 @@
   cursor: pointer;
 }
 
+.profile-form .screen-share-compatibility {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px;
+  border-radius: 6px;
+  color: #dcddde;
+  text-transform: none;
+  background: #2f3136;
+}
+
+.profile-form .screen-share-compatibility input {
+  width: auto;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: #5865f2;
+}
+
+.screen-share-compatibility span { display: grid; gap: 3px; }
+.screen-share-compatibility small { color: #b9bbbe; font-weight: 400; line-height: 1.35; }
+
 .profile-form input:focus {
   outline: none;
   border-color: #5865f2;

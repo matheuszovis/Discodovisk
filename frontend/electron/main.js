@@ -1,5 +1,6 @@
 const { app, BrowserWindow, shell, desktopCapturer, ipcMain, session, dialog } = require('electron');
 const { execFile } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const loopback = require('loopback-capture');
@@ -12,6 +13,18 @@ let processAudioDiagnosticTimer = null;
 let updateDownloadPromise = null;
 let requiredUpdateInfo = null;
 let downloadedUpdateInfo = null;
+const compatibilitySettingsPath = path.join(app.getPath('userData'), 'screen-share-compatibility.json');
+let screenShareCompatibilityMode = false;
+
+try {
+  screenShareCompatibilityMode = Boolean(JSON.parse(fs.readFileSync(compatibilitySettingsPath, 'utf8')).enabled);
+} catch {
+  // Sem preferência salva: use o modo normal com aceleração por GPU.
+}
+
+// Esta chamada precisa ocorrer antes de app.whenReady(). Ela é ativada somente
+// pelo usuário afetado, pois processamento por software pode usar mais CPU.
+if (screenShareCompatibilityMode) app.disableHardwareAcceleration();
 
 const getWindowProcessId = (sourceId) => new Promise((resolve, reject) => {
   // Fontes de janela do Electron usam o formato "window:<HWND>:<índice>".
@@ -165,6 +178,21 @@ ipcMain.handle('app:clear-cache', async () => {
   // localStorage e IndexedDB — portanto a sessão/login do usuário continua.
   await session.defaultSession.clearCache();
   return { ok: true };
+});
+
+ipcMain.handle('screen-share:get-compatibility-mode', () => ({ enabled: screenShareCompatibilityMode }));
+
+ipcMain.handle('screen-share:set-compatibility-mode', (event, enabled) => {
+  screenShareCompatibilityMode = Boolean(enabled);
+  fs.mkdirSync(path.dirname(compatibilitySettingsPath), { recursive: true });
+  fs.writeFileSync(compatibilitySettingsPath, JSON.stringify({ enabled: screenShareCompatibilityMode }));
+  app.relaunch();
+  app.exit(0);
+  return { ok: true };
+});
+
+app.on('child-process-gone', (event, details) => {
+  if (details.type === 'GPU') console.error('[ScreenShare] Processo de GPU falhou:', details);
 });
 
 ipcMain.handle('screen-sources:list', async () => {

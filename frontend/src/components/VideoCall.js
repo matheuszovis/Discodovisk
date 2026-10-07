@@ -16,6 +16,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isScreenAudioMuted, setIsScreenAudioMuted] = useState(false);
+  // Compartilhar janela usa apenas o áudio exclusivo do app; isso só vale para a tela inteira.
   const [shareSystemAudio, setShareSystemAudio] = useState(false);
   const [participants, setParticipants] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState({});
@@ -45,6 +46,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const isScreenSharingRef = useRef(false);
   const inCallRef = useRef(false);
   const peerRepairCooldownRef = useRef({});
+  const screenPeerRepairCooldownRef = useRef({});
   const selectingScreenRef = useRef(false);
   const currentUserId = String(user?.id || user?._id || '');
 
@@ -161,6 +163,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     socket.on('call:user-joined', handleUserJoined);
     socket.on('call:user-left', handleUserLeft);
     socket.on('call:repair', handleCallRepair);
+    socket.on('call:screen-repair', handleScreenPeerRepair);
     const onSocketReconnect = () => {
       if (!inCallRef.current || !localStreamRef.current) return;
       socket.emit('call:join', {
@@ -186,6 +189,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       socket.off('call:user-joined', handleUserJoined);
       socket.off('call:user-left', handleUserLeft);
       socket.off('call:repair', handleCallRepair);
+      socket.off('call:screen-repair', handleScreenPeerRepair);
       socket.off('connect', onSocketReconnect);
       
       endCall(false);
@@ -438,11 +442,10 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
 
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: { cursor: 'always' },
-          audio: false
+          audio: shareSystemAudio
         });
 
         await startScreenShare(screenStream);
-        setCallNotice('No navegador, a transmissão é iniciada sem áudio para evitar capturar o sistema inteiro. Use o aplicativo Windows para áudio exclusivo por janela.');
       } catch (error) {
         console.error('Erro ao compartilhar tela:', error);
         alert('Erro ao compartilhar tela. Verifique as permissões.');
@@ -585,67 +588,33 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   };
 
   const startScreenShare = async (screenStream, processId = null) => {
-    const preferProcessAudio = async () => {
-      if (!processId || !window.electronAPI?.startScreenAudioCapture) return;
-      const nativeAudioTracks = screenStream.getAudioTracks();
-      nativeAudioTracks.forEach((track) => {
-        screenStream.removeTrack(track);
-        track.stop();
-      });
-      try {
-        const processAudioTrack = await startProcessAudioCapture(processId);
-        if (!processAudioTrack) return;
-        nativeAudioTracks.forEach((track) => {
-          screenStream.removeTrack(track);
-          track.stop();
-        });
-        screenStream.addTrack(processAudioTrack);
-        console.info('[ShareAudio] screenAudioTrack created', {
-          id: processAudioTrack.id,
-          enabled: processAudioTrack.enabled,
-          readyState: processAudioTrack.readyState
-        });
-      } catch (error) {
-        stopProcessAudioCapture();
-        setCallNotice(`A imagem será transmitida sem áudio: ${error.message}`);
-      }
-    };
-
     try {
-        // O Electron fornece o áudio do sistema junto com getDisplayMedia quando
-        // solicitado. A captura por processo é somente uma reserva para casos
-        // em que o Windows não tenha criado uma faixa de áudio nativa.
-        if ((await preferProcessAudio(), false) && window.electronAPI?.startScreenAudioCapture) {
-          if (processId) {
-            try {
-              const processAudioTrack = await startProcessAudioCapture(processId);
-              if (processAudioTrack) screenStream.addTrack(processAudioTrack);
-            } catch (error) {
-              stopProcessAudioCapture();
-              setCallNotice(`A imagem será transmitida sem áudio: ${error.message}`);
-            }
-          } else {
-            console.warn('Telas inteiras não possuem um único processo para capturar o áudio exclusivo.');
-          }
-        }
-
-        // Ao compartilhar a tela inteira não existe um processo único. Se o
-        // Electron não criou uma faixa nativa, capturamos a saída padrão do
-        // Windows para que a transmissão ainda tenha som.
-        if (false && !screenStream.getAudioTracks().length && !processId && window.electronAPI?.startSystemAudioCapture) {
+        // Compartilhar uma janela captura só o áudio exclusivo daquele processo
+        // (o jogo/app, não o PC inteiro). A tela inteira usa o áudio do sistema
+        // quando marcado, pois não existe um único processo para isolar.
+        let audioFallbackFailed = false;
+        if (processId && window.electronAPI?.startScreenAudioCapture) {
           try {
-            const systemAudioTrack = await startProcessAudioCapture(null);
-            if (systemAudioTrack) screenStream.addTrack(systemAudioTrack);
+            const processAudioTrack = await startProcessAudioCapture(processId);
+            if (processAudioTrack) {
+              screenStream.addTrack(processAudioTrack);
+              console.info('[ShareAudio] screenAudioTrack created', {
+                id: processAudioTrack.id,
+                enabled: processAudioTrack.enabled,
+                readyState: processAudioTrack.readyState
+              });
+            }
           } catch (error) {
             stopProcessAudioCapture();
+            audioFallbackFailed = true;
             setCallNotice(`A imagem será transmitida sem áudio: ${error.message}`);
           }
         }
 
-        if (!screenStream.getAudioTracks().length) {
+        if (!audioFallbackFailed && !screenStream.getAudioTracks().length) {
           setCallNotice(processId
-            ? 'A imagem será transmitida sem áudio exclusivo; o áudio global não será usado.'
-            : 'A tela será transmitida sem áudio. Ative “Incluir áudio do sistema” se quiser compartilhá-lo.');
+            ? 'Não foi possível capturar o áudio exclusivo desse aplicativo; a imagem será transmitida sem som.'
+            : 'A tela será transmitida sem áudio do sistema. Marque “Incluir áudio do sistema” ao escolher o que compartilhar.');
         }
 
         if (!screenStream.getVideoTracks().some(track => track.readyState === 'live')) {
@@ -732,6 +701,28 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     console.warn('[Call] Reconstruindo conexão com participante', { userId, reason });
     setCallNotice('Reconectando o áudio da chamada…');
     getSocket()?.emit('call:repair', { channelId: channel._id, recipientId: userId });
+  };
+
+  const requestScreenPeerRepair = (userId, initiator, reason) => {
+    if (!userId) return;
+    const key = `${initiator ? 'send' : 'receive'}:${userId}`;
+    const now = Date.now();
+    if (now - (screenPeerRepairCooldownRef.current[key] || 0) < 8000) return;
+    screenPeerRepairCooldownRef.current[key] = now;
+    console.warn('[ScreenShare] Reconstruindo conexão de tela', { userId, initiator, reason });
+
+    if (initiator && screenStreamRef.current) {
+      const previous = screenPeersRef.current[key];
+      delete screenPeersRef.current[key];
+      previous?.destroy();
+      window.setTimeout(() => {
+        if (isScreenSharingRef.current && screenStreamRef.current) createScreenPeer(userId, true);
+      }, 250);
+      return;
+    }
+
+    getSocket()?.emit('call:screen-repair', { channelId: channel._id, screenOwnerId: userId });
+    setCallNotice('Reconectando a transmissão de tela…');
   };
 
   /**
@@ -930,7 +921,32 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     });
     peer.on('error', (error) => {
       console.error('Erro no peer de compartilhamento:', error);
+      requestScreenPeerRepair(userId, initiator, error.message || 'erro WebRTC');
     });
+
+    const screenConnection = peer._pc;
+    if (screenConnection?.addEventListener) {
+      let disconnectedTimer = null;
+      const checkScreenConnection = () => {
+        const state = screenConnection.connectionState || screenConnection.iceConnectionState;
+        if (state === 'failed' || state === 'closed') {
+          requestScreenPeerRepair(userId, initiator, `estado WebRTC: ${state}`);
+        } else if (state === 'disconnected') {
+          window.clearTimeout(disconnectedTimer);
+          disconnectedTimer = window.setTimeout(() => {
+            const currentState = screenConnection.connectionState || screenConnection.iceConnectionState;
+            if (currentState === 'disconnected') {
+              requestScreenPeerRepair(userId, initiator, 'WebRTC desconectado');
+            }
+          }, 5000);
+        } else {
+          window.clearTimeout(disconnectedTimer);
+        }
+      };
+      screenConnection.addEventListener('connectionstatechange', checkScreenConnection);
+      screenConnection.addEventListener('iceconnectionstatechange', checkScreenConnection);
+      peer.on('close', () => window.clearTimeout(disconnectedTimer));
+    }
     peer.on('close', () => {
       if (screenPeersRef.current[key] === peer) delete screenPeersRef.current[key];
     });
@@ -1001,6 +1017,11 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     if (String(initiatorId) !== currentUserId) return;
     const participant = participants.find((item) => String(item.userId) === String(requestedBy));
     createPeer(requestedBy, true, participant?.avatar, participant?.username, participant?.isScreenSharing);
+  };
+
+  const handleScreenPeerRepair = ({ channelId, requesterId }) => {
+    if (channelId !== channel._id || !screenStreamRef.current || String(requesterId) === currentUserId) return;
+    requestScreenPeerRepair(requesterId, true, 'solicitada pelo receptor');
   };
 
   const handleCallEnd = ({ userId }) => {
@@ -1272,7 +1293,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                       onChange={(event) => setShareSystemAudio(event.target.checked)}
                     />
                     Incluir áudio do sistema ao compartilhar a tela inteira
-                    <small>Janelas e jogos usam apenas o áudio exclusivo do aplicativo selecionado.</small>
+                    <small>Janelas e jogos compartilham apenas o áudio exclusivo do aplicativo selecionado.</small>
                   </label>
                   <div className="screen-source-grid">
                     {screenSources.map((source) => (
@@ -1284,7 +1305,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                       >
                         <img src={source.thumbnail} alt="" />
                         <span>{source.name}</span>
-                        <small>{source.isWindow ? 'Imagem e áudio da transmissão' : 'Tela com áudio da transmissão'}</small>
+                        <small>{source.isWindow ? 'Imagem e áudio exclusivo do app' : 'Tela com áudio da transmissão'}</small>
                       </button>
                     ))}
                   </div>
@@ -1446,6 +1467,9 @@ function ParticipantVideo({
         onPlaying={() => setIsVideoPlaying(true)}
       />
       <audio ref={voiceAudioRef} autoPlay playsInline />
+      {participant.isScreenSharing && !participant.screenVideoStream && (
+        <div className="screen-connecting-overlay">Conectando transmissão…</div>
+      )}
       {!participant.isScreenSharing && (participant.isVideoOff || !isVideoPlaying) && (
         <div className="video-off-overlay">
           <img
