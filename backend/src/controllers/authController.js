@@ -116,7 +116,7 @@ exports.changePassword = async (req, res) => {
       }
       const isCurrentPasswordValid = await user.comparePassword(currentPassword);
       if (!isCurrentPasswordValid) {
-        return res.status(401).json({ error: 'A senha atual está incorreta.' });
+        return res.status(400).json({ error: 'A senha atual está incorreta.' });
       }
     }
     user.password = password;

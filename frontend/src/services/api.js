@@ -36,10 +36,16 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const requestUrl = error.config?.url || '';
+    // Senha incorreta no login (ou senha atual incorreta ao trocar) é um erro
+    // do formulário, não uma sessão expirada. Não saia da tela nesses casos.
+    const isCredentialForm = requestUrl.endsWith('/auth/login') || requestUrl.endsWith('/auth/change-password');
+    if (error.response?.status === 401 && !isCredentialForm) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      // A aplicação usa HashRouter; navegar para /login físico pode gerar 404
+      // no servidor de hospedagem.
+      window.location.hash = '#/login';
     }
     return Promise.reject(error);
   }
