@@ -18,6 +18,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const [isScreenAudioMuted, setIsScreenAudioMuted] = useState(false);
   // Compartilhar janela usa apenas o áudio exclusivo do app; isso só vale para a tela inteira.
   const [shareSystemAudio, setShareSystemAudio] = useState(false);
+  const [shareWindowAudio, setShareWindowAudio] = useState(true);
   const [participants, setParticipants] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState({});
   const [expandedParticipantId, setExpandedParticipantId] = useState(null);
@@ -621,7 +622,9 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
           throw new Error('A janela foi fechada ou não forneceu uma faixa de vídeo. Selecione novamente.');
         }
         const screenVideoTrack = screenStream.getVideoTracks()[0];
-        try { screenVideoTrack.contentHint = 'detail'; } catch { /* hint não é suportado em todos os Chromium */ }
+        try {
+          screenVideoTrack.contentHint = processId ? 'motion' : 'detail';
+        } catch { /* hint não é suportado em todos os Chromium */ }
         screenVideoTrack.addEventListener?.('mute', () => {
           setCallNotice('A janela compartilhada parou de fornecer imagem. Se ela estiver preta, feche e compartilhe novamente; aplicativos executados como administrador ou conteúdo protegido podem bloquear a captura.');
         });
@@ -680,7 +683,9 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         setCallNotice('O Windows não forneceu áudio da tela. A imagem pode ser compartilhada; confira o som da transmissão.');
       }
       setScreenSources([]);
-      await startScreenShare(screenStream, selection?.processId);
+      // Alguns jogos travam ao abrir loopback de áudio por processo. O usuário
+      // pode desativar somente essa captura, mantendo o vídeo da janela.
+      await startScreenShare(screenStream, source.isWindow !== false && shareWindowAudio ? selection?.processId : null);
       setIsScreenAudioMuted(false);
     } catch (error) {
       console.error('Erro ao capturar a fonte escolhida:', error);
@@ -1294,6 +1299,15 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                     />
                     Incluir áudio do sistema ao compartilhar a tela inteira
                     <small>Janelas e jogos compartilham apenas o áudio exclusivo do aplicativo selecionado.</small>
+                  </label>
+                  <label className="screen-share-audio-choice">
+                    <input
+                      type="checkbox"
+                      checked={shareWindowAudio}
+                      onChange={(event) => setShareWindowAudio(event.target.checked)}
+                    />
+                    Incluir áudio exclusivo ao compartilhar uma janela ou jogo
+                    <small>Se o jogo travar ou a tela ficar preta, desmarque esta opção e teste a janela. Para som, escolha a tela inteira e marque o áudio do sistema.</small>
                   </label>
                   <div className="screen-source-grid">
                     {screenSources.map((source) => (
