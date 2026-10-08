@@ -97,9 +97,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const changePassword = async (password) => {
+  const changePassword = async (password, currentPassword) => {
     try {
-      const response = await api.post('/auth/change-password', { password });
+      const response = await api.post('/auth/change-password', { password, currentPassword });
       const updatedUser = response.data.user;
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));

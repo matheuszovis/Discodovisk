@@ -101,12 +101,24 @@ exports.resetUserPassword = async (req, res) => {
 
 exports.changePassword = async (req, res) => {
   try {
-    const { password } = req.body;
+    const { password, currentPassword } = req.body;
     if (!password || password.length < 6) {
       return res.status(400).json({ error: 'A senha deve ter no mínimo 6 caracteres.' });
     }
 
     const user = await User.findById(req.user._id);
+    // Usuários que receberam uma senha temporária precisam definir a nova
+    // senha; nos demais casos, exigir a senha atual evita troca por sessão
+    // autenticada indevida.
+    if (!user.mustChangePassword) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Informe sua senha atual.' });
+      }
+      const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+      if (!isCurrentPasswordValid) {
+        return res.status(401).json({ error: 'A senha atual está incorreta.' });
+      }
+    }
     user.password = password;
     user.mustChangePassword = false;
     await user.save();

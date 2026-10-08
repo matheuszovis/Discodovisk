@@ -29,7 +29,12 @@ function Home() {
   const [updateVersion, setUpdateVersion] = useState('');
   const [requiredUpdate, setRequiredUpdate] = useState(null);
   const [screenShareCompatibilityMode, setScreenShareCompatibilityMode] = useState(false);
-  const { updateProfile } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const { updateProfile, changePassword } = useAuth();
 
   useEffect(() => {
     if (!window.electronAPI?.onUpdateAvailable) return undefined;
@@ -116,6 +121,10 @@ function Home() {
   const handleOpenProfileSettings = () => {
     setAvatarUrl(user?.avatar || '');
     setProfileError('');
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordMessage('');
     setShowProfileSettings(true);
   };
 
@@ -201,6 +210,23 @@ function Home() {
     }
 
     setSavingProfile(false);
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordMessage('');
+    if (newPassword.length < 6) return setPasswordMessage('A nova senha deve ter pelo menos 6 caracteres.');
+    if (newPassword !== confirmPassword) return setPasswordMessage('A confirmação não corresponde à nova senha.');
+    setChangingPassword(true);
+    const result = await changePassword(newPassword, currentPassword);
+    if (result.success) {
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordMessage('Senha alterada com sucesso.');
+    } else {
+      setPasswordMessage(result.message);
+    }
+    setChangingPassword(false);
   };
 
   return (
@@ -358,6 +384,16 @@ function Home() {
                   </span>
                 </label>
               )}
+              <section className="password-change" aria-label="Alterar senha">
+                <strong>Alterar senha</strong>
+                <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Senha atual" autoComplete="current-password" disabled={changingPassword} />
+                <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Nova senha" autoComplete="new-password" disabled={changingPassword} />
+                <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirmar nova senha" autoComplete="new-password" disabled={changingPassword} />
+                <button type="button" className="btn-secondary" onClick={handleChangePassword} disabled={changingPassword}>
+                  {changingPassword ? 'Alterando...' : 'Alterar senha'}
+                </button>
+                {passwordMessage && <p className={passwordMessage.includes('sucesso') ? 'password-success' : 'profile-error'}>{passwordMessage}</p>}
+              </section>
               {profileError && <p className="profile-error">{profileError}</p>}
               <div className="profile-modal-actions">
                 <button
