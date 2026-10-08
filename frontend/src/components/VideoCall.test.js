@@ -122,8 +122,11 @@ test('screen audio failure preserves captured video and displays warning', async
     selectScreenSource: async () => ({ processId: 1 }), startScreenAudioCapture: async () => { throw new Error('audio indisponível'); },
     stopScreenAudioCapture: async () => {} };
   await click('Compartilhar tela');
+  await act(async () => document.querySelectorAll('.screen-share-audio-choice input')[1].click());
   await click('Game');
-  expect(container.textContent).toContain('imagem será transmitida sem áudio');
+  expect(mockPeers[1].tracks.map(({ track: screenTrack }) => screenTrack.kind)).toEqual(['video', 'audio']);
+  await act(async () => new Promise(resolve => setTimeout(resolve, 300)));
+  expect(container.textContent).toContain('imagem continua sendo transmitida, mas sem áudio exclusivo');
   expect(mockPeers[1].tracks[0].track.kind).toBe('video');
 });
 test('noise control reuses live microphone preserving mute and saves preference', async () => {

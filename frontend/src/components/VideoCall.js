@@ -18,7 +18,9 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const [isScreenAudioMuted, setIsScreenAudioMuted] = useState(false);
   // Compartilhar janela usa apenas o áudio exclusivo do app; isso só vale para a tela inteira.
   const [shareSystemAudio, setShareSystemAudio] = useState(false);
-  const [shareWindowAudio, setShareWindowAudio] = useState(true);
+  // O loopback por processo pode conflitar com alguns jogos/anti-cheats. Ele
+  // continua disponível, mas é opcional: a imagem nunca deve depender dele.
+  const [shareWindowAudio, setShareWindowAudio] = useState(false);
   const [participants, setParticipants] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState({});
   const [expandedParticipantId, setExpandedParticipantId] = useState(null);
@@ -44,6 +46,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   const screenAudioQueueRef = useRef([]);
   const screenAudioInputRef = useRef(null);
   const screenAudioStatsRef = useRef(null);
+  const screenAudioStartTimerRef = useRef(null);
+  const screenAudioCaptureAttemptRef = useRef(0);
   const isScreenSharingRef = useRef(false);
   const inCallRef = useRef(false);
   const peerRepairCooldownRef = useRef({});
@@ -466,6 +470,11 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
   };
 
   const stopProcessAudioCapture = () => {
+    screenAudioCaptureAttemptRef.current += 1;
+    if (screenAudioStartTimerRef.current) {
+      window.clearTimeout(screenAudioStartTimerRef.current);
+      screenAudioStartTimerRef.current = null;
+    }
     screenAudioInputRef.current = null;
     screenAudioQueueRef.current = [];
     screenAudioStatsRef.current = null;
@@ -479,8 +488,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     window.electronAPI?.stopScreenAudioCapture?.().catch(() => {});
   };
 
-  const startProcessAudioCapture = async (processId) => {
-    if (!window.electronAPI?.startScreenAudioCapture || !processId) return null;
+  const prepareProcessAudioTrack = async (processId) => {
+    if (!processId) return null;
 
     const audioContext = new AudioContext({ sampleRate: 48000 });
     const destination = audioContext.createMediaStreamDestination();
@@ -578,77 +587,116 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       if (queue.length > 25) queue.splice(0, queue.length - 25);
     };
 
-    const result = await window.electronAPI.startScreenAudioCapture(processId);
-    if (!result?.ok) {
-      stopProcessAudioCapture();
-      throw new Error(result?.message || 'Não foi possível capturar o áudio da janela.');
-    }
-
     await audioContext.resume();
     return destination.stream.getAudioTracks()[0] || null;
   };
 
-  const startScreenShare = async (screenStream, processId = null) => {
+  const attachProcessAudioToScreenShare = async (screenStream, processId) => {
+    const captureAttempt = ++screenAudioCaptureAttemptRef.current;
+    let timeoutId = null;
+
     try {
-        // Compartilhar uma janela captura só o áudio exclusivo daquele processo
-        // (o jogo/app, não o PC inteiro). A tela inteira usa o áudio do sistema
-        // quando marcado, pois não existe um único processo para isolar.
-        let audioFallbackFailed = false;
-        if (processId && window.electronAPI?.startScreenAudioCapture) {
-          try {
-            const processAudioTrack = await startProcessAudioCapture(processId);
-            if (processAudioTrack) {
-              screenStream.addTrack(processAudioTrack);
-              console.info('[ShareAudio] screenAudioTrack created', {
-                id: processAudioTrack.id,
-                enabled: processAudioTrack.enabled,
-                readyState: processAudioTrack.readyState
-              });
-            }
-          } catch (error) {
-            stopProcessAudioCapture();
-            audioFallbackFailed = true;
-            setCallNotice(`A imagem será transmitida sem áudio: ${error.message}`);
-          }
-        }
+      // Nunca deixe uma inicialização lenta do loopback bloquear a imagem. A
+      // faixa silenciosa já foi negociada junto do vídeo; quando o addon
+      // responder, ele apenas começará a alimentar essa mesma faixa.
+      const result = await Promise.race([
+        window.electronAPI.startScreenAudioCapture(processId),
+        new Promise((_, reject) => {
+          timeoutId = window.setTimeout(() => {
+            reject(new Error('a inicialização do áudio exclusivo demorou demais'));
+          }, 4000);
+        })
+      ]);
 
-        if (!audioFallbackFailed && !screenStream.getAudioTracks().length) {
-          setCallNotice(processId
-            ? 'Não foi possível capturar o áudio exclusivo desse aplicativo; a imagem será transmitida sem som.'
-            : 'A tela será transmitida sem áudio do sistema. Marque “Incluir áudio do sistema” ao escolher o que compartilhar.');
-        }
+      const isCurrentShare = screenAudioCaptureAttemptRef.current === captureAttempt
+        && screenStreamRef.current === screenStream
+        && isScreenSharingRef.current;
+      if (!isCurrentShare) return;
+      if (!result?.ok) {
+        throw new Error(result?.message || 'não foi possível capturar o áudio da janela');
+      }
+      console.info('[ShareAudio] native process audio is feeding the negotiated screen track', { processId });
+      setCallNotice('');
+    } catch (error) {
+      const isCurrentShare = screenAudioCaptureAttemptRef.current === captureAttempt
+        && screenStreamRef.current === screenStream
+        && isScreenSharingRef.current;
+      if (!isCurrentShare) return;
 
-        if (!screenStream.getVideoTracks().some(track => track.readyState === 'live')) {
-          throw new Error('A janela foi fechada ou não forneceu uma faixa de vídeo. Selecione novamente.');
-        }
-        const screenVideoTrack = screenStream.getVideoTracks()[0];
+      // A falha de áudio é intencionalmente não fatal: não pare as tracks de
+      // vídeo nem destrua os peers que já estão enviando a tela.
+      stopProcessAudioCapture();
+      setCallNotice(`A imagem continua sendo transmitida, mas sem áudio exclusivo: ${error.message}`);
+    } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    }
+  };
+
+  const startScreenShare = async (screenStream, processId = null, sourceIsWindow = false) => {
+    try {
+      if (!screenStream.getVideoTracks().some(track => track.readyState === 'live')) {
+        throw new Error('A janela foi fechada ou não forneceu uma faixa de vídeo. Selecione novamente.');
+      }
+      let processAudioTrackReady = false;
+      let processAudioPreparationError = null;
+      if (processId && window.electronAPI?.startScreenAudioCapture) {
         try {
-          screenVideoTrack.contentHint = processId ? 'motion' : 'detail';
-        } catch { /* hint não é suportado em todos os Chromium */ }
-        screenVideoTrack.addEventListener?.('mute', () => {
-          setCallNotice('A janela compartilhada parou de fornecer imagem. Se ela estiver preta, feche e compartilhe novamente; aplicativos executados como administrador ou conteúdo protegido podem bloquear a captura.');
-        });
-        screenVideoTrack.addEventListener?.('unmute', () => setCallNotice(''));
-        screenStreamRef.current = screenStream;
-        isScreenSharingRef.current = true;
+          // Cria uma faixa inicialmente silenciosa antes de os peers existirem.
+          // Isso mantém vídeo e áudio na oferta inicial e evita uma renegociação
+          // por espectador quando o áudio nativo ficar pronto.
+          const silentProcessAudioTrack = await prepareProcessAudioTrack(processId);
+          if (!silentProcessAudioTrack) {
+            throw new Error('não foi possível criar a faixa de áudio da janela');
+          }
+          screenStream.addTrack(silentProcessAudioTrack);
+          processAudioTrackReady = true;
+        } catch (error) {
+          stopProcessAudioCapture();
+          processAudioPreparationError = error;
+        }
+      }
+      const screenVideoTrack = screenStream.getVideoTracks()[0];
+      try {
+        // Janela/jogo tende a ter movimento; tela inteira favorece detalhes.
+        // Isso não depende de o áudio exclusivo ter sido marcado.
+        screenVideoTrack.contentHint = sourceIsWindow ? 'motion' : 'detail';
+      } catch { /* hint não é suportado em todos os Chromium */ }
+      screenVideoTrack.addEventListener?.('mute', () => {
+        setCallNotice('A janela compartilhada parou de fornecer imagem. Se ela estiver preta, feche e compartilhe novamente; aplicativos executados como administrador ou conteúdo protegido podem bloquear a captura.');
+      });
+      screenVideoTrack.addEventListener?.('unmute', () => setCallNotice(''));
+      screenStreamRef.current = screenStream;
+      isScreenSharingRef.current = true;
 
-        // O elemento de vídeo será renderizado após esta mudança de estado.
-        setIsScreenSharing(true);
+      // Publique o vídeo primeiro. Assim, uma falha ou travamento do áudio
+      // nativo não impede os amigos de receberem a transmissão da tela.
+      setIsScreenSharing(true);
+      getSocket()?.emit('call:screen-share', {
+        channelId: channel._id,
+        isSharing: true
+      });
+      screenVideoTrack.onended = () => {
+        toggleScreenShare();
+      };
+      Object.keys(peersRef.current).forEach((userId) => {
+        createScreenPeer(userId, true);
+      });
 
-        getSocket()?.emit('call:screen-share', {
-          channelId: channel._id,
-          isSharing: true
-        });
-
-        // Quando o usuário para de compartilhar pela interface do navegador
-        screenStream.getVideoTracks()[0].onended = () => {
-          toggleScreenShare();
-        };
-
-        // A tela é enviada somente pela conexão dedicada, uma por espectador.
-        Object.keys(peersRef.current).forEach((userId) => {
-          createScreenPeer(userId, true);
-        });
+      if (processAudioTrackReady) {
+        setCallNotice('A imagem já está sendo transmitida; preparando o áudio exclusivo da janela…');
+        // Dê prioridade para a negociação do vídeo. A captura nativa vem em
+        // seguida e passa a alimentar a faixa de áudio já negociada.
+        screenAudioStartTimerRef.current = window.setTimeout(() => {
+          screenAudioStartTimerRef.current = null;
+          void attachProcessAudioToScreenShare(screenStream, processId);
+        }, 250);
+      } else if (processAudioPreparationError) {
+        setCallNotice(`A imagem está sendo transmitida, mas sem áudio exclusivo: ${processAudioPreparationError.message}`);
+      } else if (!screenStream.getAudioTracks().length) {
+        setCallNotice(sourceIsWindow
+          ? 'A imagem está sendo transmitida sem áudio exclusivo. Marque essa opção somente se o jogo continuar estável.'
+          : 'A tela será transmitida sem áudio do sistema. Marque “Incluir áudio do sistema” ao escolher o que compartilhar.');
+      }
 
     } catch (error) {
       console.error('Erro ao iniciar compartilhamento:', error);
@@ -1306,8 +1354,8 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                       checked={shareWindowAudio}
                       onChange={(event) => setShareWindowAudio(event.target.checked)}
                     />
-                    Incluir áudio exclusivo ao compartilhar uma janela ou jogo
-                    <small>Se o jogo travar ou a tela ficar preta, desmarque esta opção e teste a janela. Para som, escolha a tela inteira e marque o áudio do sistema.</small>
+                    Incluir áudio exclusivo ao compartilhar uma janela ou jogo (experimental)
+                    <small>Fica desligado por segurança: alguns jogos travam ao iniciar essa captura. A imagem continua mesmo sem ela. Para som mais estável, compartilhe a tela inteira e marque o áudio do sistema.</small>
                   </label>
                   <div className="screen-source-grid">
                     {screenSources.map((source) => (
@@ -1319,7 +1367,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
                       >
                         <img src={source.thumbnail} alt="" />
                         <span>{source.name}</span>
-                        <small>{source.isWindow ? 'Imagem e áudio exclusivo do app' : 'Tela com áudio da transmissão'}</small>
+                        <small>{source.isWindow ? 'Janela — áudio exclusivo opcional' : 'Tela com áudio da transmissão'}</small>
                       </button>
                     ))}
                   </div>
