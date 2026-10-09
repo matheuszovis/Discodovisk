@@ -169,7 +169,9 @@ function Home() {
       const image = new Image();
       image.onload = () => {
         const canvas = document.createElement('canvas');
-        const size = 256;
+        // Um avatar pequeno reduz o envio ao backend e evita que a foto fique
+        // grande demais para ser salva/propagada na chamada em tempo real.
+        const size = 160;
         canvas.width = size;
         canvas.height = size;
 
@@ -189,7 +191,7 @@ function Home() {
           size
         );
 
-        setAvatarUrl(canvas.toDataURL('image/jpeg', 0.82));
+        setAvatarUrl(canvas.toDataURL('image/jpeg', 0.76));
         setProfileError('');
       };
       image.src = reader.result;

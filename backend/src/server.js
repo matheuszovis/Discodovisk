@@ -56,8 +56,10 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json()); // Parse JSON no body das requisições
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded data
+// Avatares selecionados no computador são reduzidos no frontend e enviados como
+// data URL. O limite padrão de 100 KB pode rejeitar fotos perfeitamente válidas.
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 /**
  * Rotas da API REST

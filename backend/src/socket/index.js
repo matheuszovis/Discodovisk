@@ -80,6 +80,27 @@ module.exports = (io) => {
       console.log(`${socket.user.username} saiu do canal ${channelId}`);
     });
 
+    // O perfil é salvo pela API HTTP. Depois de salvar, o cliente pede este
+    // refresh para que a sessão Socket.io e os participantes de uma chamada
+    // recebam o avatar novo sem precisar reconectar.
+    socket.on('profile:refresh', async () => {
+      try {
+        const freshUser = await User.findById(socket.user._id).select('username avatar status');
+        if (!freshUser) return;
+        socket.user.username = freshUser.username;
+        socket.user.avatar = freshUser.avatar;
+        socket.user.status = freshUser.status;
+
+        const callRooms = [...socket.rooms].filter((room) => room.startsWith('call:'));
+        callRooms.forEach((room) => {
+          const channelId = room.slice('call:'.length);
+          broadcastCallParticipants(io, room, channelId);
+        });
+      } catch (error) {
+        console.error('Erro ao atualizar o perfil na chamada:', error);
+      }
+    });
+
     /**
      * Enviar mensagem em um canal
      */

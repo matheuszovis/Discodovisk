@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import api from '../services/api';
-import { connectSocket, disconnectSocket } from '../services/socket';
+import { connectSocket, disconnectSocket, getSocket } from '../services/socket';
 
 /**
  * Context API do React para gerenciar o estado de autenticação
@@ -135,6 +135,9 @@ export const AuthProvider = ({ children }) => {
       
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      // Atualiza o avatar guardado na sessão Socket.io para quem já está em
+      // uma chamada; não é preciso sair e entrar novamente no canal de voz.
+      getSocket()?.emit('profile:refresh');
 
       return { success: true };
     } catch (error) {

@@ -788,7 +788,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         return prev.map(participant => participant.userId === userId
           ? {
             ...participant,
-            avatar: participant.avatar || participantAvatar,
+            avatar: participantAvatar || participant.avatar,
             username: participant.username || participantUsername
           }
           : participant
@@ -936,7 +936,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         };
         const updatedParticipant = {
           ...currentParticipant,
-          avatar: currentParticipant.avatar || participantAvatar,
+          avatar: participantAvatar || currentParticipant.avatar,
           username: currentParticipant.username || participantUsername,
           isScreenSharing: true,
           screenVideoStream: stream.getVideoTracks().length
@@ -1041,7 +1041,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
       ? {
         ...participant,
         username: participant.username || senderUsername,
-        avatar: participant.avatar || senderAvatar
+        avatar: senderAvatar || participant.avatar
       }
       : participant
     ));
@@ -1102,7 +1102,7 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
         ? {
           ...participant,
           username: participant.username || username,
-          avatar: participant.avatar || avatar,
+          avatar: avatar || participant.avatar,
           isScreenSharing: Boolean(isScreenSharing)
         }
         : participant

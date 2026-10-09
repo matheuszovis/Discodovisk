@@ -217,7 +217,16 @@ exports.updateProfile = async (req, res) => {
     const updates = {};
 
     if (username) updates.username = username;
-    if (avatar) updates.avatar = avatar;
+    if (avatar) {
+      const isUploadedImage = typeof avatar === 'string'
+        && /^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(avatar)
+        && avatar.length <= 1_500_000;
+      const isLegacyImageUrl = typeof avatar === 'string' && /^https:\/\//i.test(avatar);
+      if (!isUploadedImage && !isLegacyImageUrl) {
+        return res.status(400).json({ error: 'A foto de perfil é inválida ou grande demais.' });
+      }
+      updates.avatar = avatar;
+    }
     if (status) updates.status = status;
 
     const user = await User.findByIdAndUpdate(
