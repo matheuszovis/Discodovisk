@@ -419,12 +419,21 @@ function startNext(jukebox) {
   jukebox.changedAt = Date.now();
 }
 
+function getJukeboxPosition(jukebox, now = Date.now()) {
+  if (!jukebox || jukebox.status !== 'playing') return Number(jukebox?.position || 0);
+  return Number(jukebox.position || 0) + ((now - jukebox.changedAt) / 1000);
+}
+
 function scheduleJukeboxAdvance(io, channelId, jukebox) {
   clearTimeout(jukeboxTimers.get(channelId));
   jukeboxTimers.delete(channelId);
   if (!jukebox?.current || jukebox.status !== 'playing' || !jukebox.current.durationSeconds) return;
 
-  const remainingMs = Math.max(1000, (jukebox.current.durationSeconds - jukebox.position) * 1000 + 1500);
+  // position é a posição no último play/pause, não a posição atual. Usar o
+  // tempo decorrido evita reiniciar a duração inteira ao adicionar uma nova
+  // música na fila enquanto a atual já está tocando.
+  const currentPosition = getJukeboxPosition(jukebox);
+  const remainingMs = Math.max(1000, (jukebox.current.durationSeconds - currentPosition) * 1000 + 1500);
   const expectedVideoId = jukebox.current.videoId;
   const expectedChangedAt = jukebox.changedAt;
   const timer = setTimeout(() => {
@@ -440,9 +449,7 @@ function scheduleJukeboxAdvance(io, channelId, jukebox) {
 
 function getJukeboxState(channelId) {
   const jukebox = jukeboxes.get(channelId) || emptyJukebox(channelId);
-  const position = jukebox.status === 'playing'
-    ? jukebox.position + ((Date.now() - jukebox.changedAt) / 1000)
-    : jukebox.position;
+  const position = getJukeboxPosition(jukebox);
   return { ...jukebox, position };
 }
 

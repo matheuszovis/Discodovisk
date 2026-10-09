@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import './Jukebox.css';
+
+const PLAYER_ORIGIN = 'https://www.youtube-nocookie.com';
+const clampVolume = (value) => Math.max(0, Math.min(100, Number(value) || 0));
 
 function Jukebox({ channelId, active }) {
   const [query, setQuery] = useState('');
@@ -10,6 +13,24 @@ function Jukebox({ channelId, active }) {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
   const [playerEnabled, setPlayerEnabled] = useState(false);
+  const [volume, setVolume] = useState(() => {
+    try {
+      return clampVolume(window.localStorage.getItem('discordovisk-jukebox-volume') ?? 100);
+    } catch {
+      return 100;
+    }
+  });
+  const playerRef = useRef(null);
+
+  const sendPlayerCommand = useCallback((func, args = []) => {
+    const playerWindow = playerRef.current?.contentWindow;
+    if (!playerWindow) return;
+    playerWindow.postMessage(JSON.stringify({ event: 'command', func, args }), PLAYER_ORIGIN);
+  }, []);
+
+  const applyPlayerVolume = useCallback((nextVolume) => {
+    sendPlayerCommand('setVolume', [clampVolume(nextVolume)]);
+  }, [sendPlayerCommand]);
 
   useEffect(() => {
     if (!active || !channelId) return undefined;
@@ -36,16 +57,28 @@ function Jukebox({ channelId, active }) {
   }, [active, channelId]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem('discordovisk-jukebox-volume', String(volume));
+    } catch { /* armazenamento pode estar indisponível */ }
+    applyPlayerVolume(volume);
+  }, [volume, applyPlayerVolume]);
+
+  useEffect(() => {
     const videoId = jukebox?.current?.videoId;
     const changedAt = jukebox?.changedAt;
     if (!active || !videoId || !changedAt) return undefined;
 
     const onPlayerMessage = (event) => {
-      if (!['https://www.youtube.com', 'https://www.youtube-nocookie.com'].includes(event.origin)) return;
+      if (!['https://www.youtube.com', PLAYER_ORIGIN].includes(event.origin)) return;
+      if (event.source !== playerRef.current?.contentWindow) return;
       let message;
       try {
         message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
       } catch {
+        return;
+      }
+      if (message?.event === 'onReady') {
+        applyPlayerVolume(volume);
         return;
       }
       if (message?.event !== 'onStateChange' || Number(message.info) !== 0) return;
@@ -54,7 +87,28 @@ function Jukebox({ channelId, active }) {
 
     window.addEventListener('message', onPlayerMessage);
     return () => window.removeEventListener('message', onPlayerMessage);
-  }, [active, channelId, jukebox?.current?.videoId, jukebox?.changedAt]);
+  }, [active, channelId, jukebox?.current?.videoId, jukebox?.changedAt, applyPlayerVolume, volume]);
+
+  useEffect(() => {
+    const current = jukebox?.current;
+    const durationSeconds = Number(current?.durationSeconds);
+    const changedAt = jukebox?.changedAt;
+    if (!active || jukebox?.status !== 'playing' || !current?.videoId || !changedAt || !durationSeconds) return undefined;
+
+    // O evento do YouTube é o caminho principal. Este alarme é um reforço para
+    // casos em que o iframe não entrega o evento de fim (por exemplo, uma aba
+    // que ficou em segundo plano). O servidor aceita somente a faixa atual.
+    const remainingMs = Math.max(1000, (durationSeconds - Number(jukebox.position || 0)) * 1000 + 2000);
+    const timer = window.setTimeout(() => {
+      getSocket()?.emit('jukebox:control', {
+        channelId,
+        action: 'ended',
+        videoId: current.videoId,
+        changedAt
+      });
+    }, remainingMs);
+    return () => window.clearTimeout(timer);
+  }, [active, channelId, jukebox?.status, jukebox?.current?.videoId, jukebox?.current?.durationSeconds, jukebox?.changedAt, jukebox?.position]);
 
   const playerUrl = useMemo(() => {
     if (!jukebox?.current?.videoId) return '';
@@ -96,6 +150,12 @@ function Jukebox({ channelId, active }) {
   const control = (action) => {
     const socket = getSocket();
     if (socket) socket.emit('jukebox:control', { channelId, action });
+  };
+
+  const changeVolume = (event) => {
+    const nextVolume = clampVolume(event.target.value);
+    setVolume(nextVolume);
+    applyPlayerVolume(nextVolume);
   };
 
   if (!active) return null;
@@ -146,14 +206,28 @@ function Jukebox({ channelId, active }) {
             <button type="button" onClick={() => control('skip')}>Pular</button>
             {!playerEnabled && <button type="button" className="jukebox-listen" onClick={() => setPlayerEnabled(true)}>Ouvir</button>}
           </div>
+          <label className="jukebox-volume">
+            <span>Volume <output>{volume}%</output></span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={volume}
+              onChange={changeVolume}
+              aria-label="Volume da Jukebox"
+            />
+          </label>
           <iframe
             key={`${jukebox.current.videoId}:${jukebox.changedAt}:${playerEnabled}`}
+            ref={playerRef}
             className="jukebox-player"
             src={playerUrl}
             title={`Jukebox: ${jukebox.current.title}`}
             allow="autoplay; encrypted-media; picture-in-picture"
             referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen
+            onLoad={() => applyPlayerVolume(volume)}
           />
           {!playerEnabled && <p className="jukebox-audio-note">Clique em “Ouvir” uma vez para liberar o áudio neste computador.</p>}
         </div>
