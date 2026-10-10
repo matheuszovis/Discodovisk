@@ -46,7 +46,7 @@ module.exports = (io) => {
     socket.join(`user:${socket.user._id}`);
 
     // Atualiza status para online
-    updateUserStatus(socket.user._id, 'online');
+    updateUserStatus(io, socket.user._id, 'online');
 
     /**
      * Entrar em um servidor
@@ -406,7 +406,7 @@ module.exports = (io) => {
      */
     socket.on('status:update', async (status) => {
       try {
-        await updateUserStatus(socket.user._id, status);
+        await updateUserStatus(io, socket.user._id, status);
         
         // Notifica todos os amigos sobre a mudança de status
         const user = await User.findById(socket.user._id).populate('friends');
@@ -427,7 +427,7 @@ module.exports = (io) => {
     socket.on('disconnect', () => {
       const callRooms = [...socket.rooms].filter((room) => room.startsWith('call:'));
       console.log(`❌ Usuário desconectado: ${socket.user.username}`);
-      updateUserStatus(socket.user._id, 'offline');
+      updateUserStatus(io, socket.user._id, 'offline');
       callRooms.forEach((room) => {
         const channelId = room.replace('call:', '');
         removeScreenShare(channelId, socket.user._id.toString());
@@ -448,9 +448,21 @@ function removeScreenShare(channelId, userId) {
 /**
  * Função auxiliar para atualizar o status do usuário
  */
-async function updateUserStatus(userId, status) {
+async function updateUserStatus(io, userId, status) {
   try {
-    await User.findByIdAndUpdate(userId, { status });
+    const user = await User.findByIdAndUpdate(userId, { status }, { new: true })
+      .select('username avatar status servers');
+    if (!user) return;
+
+    user.servers.forEach((serverId) => {
+      io.to(`server:${serverId}`).emit('server:member-status', {
+        serverId: serverId.toString(),
+        userId: user._id.toString(),
+        username: user.username,
+        avatar: user.avatar,
+        status: user.status
+      });
+    });
   } catch (error) {
     console.error('Erro ao atualizar status:', error);
   }

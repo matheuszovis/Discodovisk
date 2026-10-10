@@ -14,6 +14,7 @@ function ChatArea({ channel, server }) {
   const [isTyping, setIsTyping] = useState(false);
   const [typingUsers, setTypingUsers] = useState([]);
   const [messageActionError, setMessageActionError] = useState('');
+  const [availableMembers, setAvailableMembers] = useState([]);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const { user } = useAuth();
@@ -54,6 +55,48 @@ function ChatArea({ channel, server }) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const isGeneralChannel = channel?.type === 'text' && channel?.name?.trim().toLowerCase() === 'geral';
+
+  useEffect(() => {
+    if (!isGeneralChannel || !server?._id) {
+      setAvailableMembers([]);
+      return undefined;
+    }
+
+    let active = true;
+    const loadAvailableMembers = async () => {
+      try {
+        const response = await api.get(`/servers/${server._id}`);
+        if (!active) return;
+        const members = (response.data.server.members || [])
+          .map((member) => ({ ...member.user, status: member.user?.status || 'offline' }))
+          .filter((member) => member._id && member.status === 'online')
+          .sort((first, second) => first.username.localeCompare(second.username, 'pt-BR'));
+        setAvailableMembers(members);
+      } catch (error) {
+        console.error('Erro ao carregar membros disponíveis:', error);
+      }
+    };
+
+    loadAvailableMembers();
+    const socket = getSocket();
+    const handleMemberStatus = (member) => {
+      if (member.serverId !== server._id) return;
+      setAvailableMembers((current) => {
+        const remaining = current.filter((item) => item._id !== member.userId);
+        if (member.status !== 'online') return remaining;
+        return [...remaining, { _id: member.userId, username: member.username, avatar: member.avatar, status: member.status }]
+          .sort((first, second) => first.username.localeCompare(second.username, 'pt-BR'));
+      });
+    };
+    socket?.on('server:member-status', handleMemberStatus);
+
+    return () => {
+      active = false;
+      socket?.off('server:member-status', handleMemberStatus);
+    };
+  }, [isGeneralChannel, server?._id]);
 
   const loadMessages = async () => {
     try {
@@ -240,6 +283,7 @@ function ChatArea({ channel, server }) {
       </div>
 
       {/* Lista de mensagens */}
+      <div className={`chat-content ${isGeneralChannel ? 'has-member-list' : ''}`}>
       <div className="messages-container">
         {messages.length === 0 ? (
           <div className="no-messages">
@@ -312,6 +356,28 @@ function ChatArea({ channel, server }) {
         )}
         
         <div ref={messagesEndRef} />
+      </div>
+
+      {isGeneralChannel && (
+        <aside className="available-members" aria-label="Membros disponíveis">
+          <div className="available-members-header">
+            <span>Disponíveis</span><strong>{availableMembers.length}</strong>
+          </div>
+          <div className="available-members-list">
+            {availableMembers.length ? availableMembers.map((member) => (
+              <div className="available-member" key={member._id} title={`${member.username} está disponível`}>
+                <span className="available-member-avatar">
+                  <img src={member.avatar || 'https://via.placeholder.com/64'} alt="" />
+                  <i aria-label="Online" />
+                </span>
+                <span>{member.username}</span>
+              </div>
+            )) : (
+              <p className="available-members-empty">Nenhuma pessoa disponível agora.</p>
+            )}
+          </div>
+        </aside>
+      )}
       </div>
 
       {/* Formulário de envio de mensagem */}
