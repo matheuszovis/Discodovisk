@@ -1239,7 +1239,7 @@ function VideoCall({ channel, onClose, onParticipantsChange, minimized = false, 
       </button>
       <div className="video-call-container">
         <div className="call-header">
-          <h3>📞 {channel.name}</h3>
+          <h3><CallControlIcon name="phone" /> {channel.name}</h3>
           <button onClick={endCall} className="btn-close-call">
             ✕
           </button>
@@ -1391,7 +1391,7 @@ function VideoCall({ channel, onClose, onParticipantsChange, minimized = false, 
                 className={`control-btn ${isMuted ? 'active' : ''}`}
                 title={isMuted ? 'Ativar microfone' : 'Mutar microfone'}
               >
-                {isMuted ? '🔇' : '🎤'}
+                <CallControlIcon name={isMuted ? 'micOff' : 'mic'} />
               </button>
 
               <button
@@ -1399,7 +1399,7 @@ function VideoCall({ channel, onClose, onParticipantsChange, minimized = false, 
                 className={`control-btn ${isVideoOff ? 'active' : ''}`}
                 title={isVideoOff ? 'Ativar câmera' : 'Desligar câmera'}
               >
-                {isVideoOff ? '📷' : '📹'}
+                <CallControlIcon name={isVideoOff ? 'cameraOff' : 'camera'} />
               </button>
 
               <button
@@ -1407,7 +1407,7 @@ function VideoCall({ channel, onClose, onParticipantsChange, minimized = false, 
                 className={`control-btn ${isScreenSharing ? 'active' : ''}`}
                 title={isScreenSharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
               >
-                {isScreenSharing ? '🖥️' : '💻'}
+                <CallControlIcon name={isScreenSharing ? 'screenOff' : 'screen'} />
               </button>
 
               {isScreenSharing && (
@@ -1416,7 +1416,7 @@ function VideoCall({ channel, onClose, onParticipantsChange, minimized = false, 
                   className={`control-btn ${isScreenAudioMuted ? 'active' : ''}`}
                   title={isScreenAudioMuted ? 'Ativar áudio da transmissão' : 'Silenciar áudio da transmissão'}
                 >
-                  {isScreenAudioMuted ? '🔇' : '🔊'}
+                  <CallControlIcon name={isScreenAudioMuted ? 'volumeOff' : 'volume'} />
                 </button>
               )}
 
@@ -1425,7 +1425,7 @@ function VideoCall({ channel, onClose, onParticipantsChange, minimized = false, 
                 className="control-btn disconnect"
                 title="Desligar"
               >
-                📞
+                <CallControlIcon name="hangup" />
               </button>
             </div>
           </>
@@ -1433,6 +1433,29 @@ function VideoCall({ channel, onClose, onParticipantsChange, minimized = false, 
       </div>
     </div>
   );
+}
+
+function CallControlIcon({ name }) {
+  const iconProps = {
+    className: 'call-control-icon', viewBox: '0 0 24 24', fill: 'none',
+    stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round',
+    strokeLinejoin: 'round', 'aria-hidden': true
+  };
+  const slash = <path d="M4 4l16 16" />;
+
+  switch (name) {
+    case 'mic': return <svg {...iconProps}><rect x="9" y="2.5" width="6" height="12" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v4M8.5 21.5h7" /></svg>;
+    case 'micOff': return <svg {...iconProps}><rect x="9" y="2.5" width="6" height="12" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 10.8 4.8M12 17.5v4M8.5 21.5h7" />{slash}</svg>;
+    case 'camera': return <svg {...iconProps}><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 5-3v10l-5-3z" /></svg>;
+    case 'cameraOff': return <svg {...iconProps}><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 5-3v10l-5-3z" />{slash}</svg>;
+    case 'screen': return <svg {...iconProps}><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>;
+    case 'screenOff': return <svg {...iconProps}><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" />{slash}</svg>;
+    case 'volume': return <svg {...iconProps}><path d="M4 10h4l5-4v12l-5-4H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" /></svg>;
+    case 'volumeOff': return <svg {...iconProps}><path d="M4 10h4l5-4v12l-5-4H4z" />{slash}</svg>;
+    case 'hangup': return <svg {...iconProps}><path d="M5 14.5c3.8-3.5 10.2-3.5 14 0" /><path d="m5.2 14.3 2.5 3.2M18.8 14.3l-2.5 3.2" /></svg>;
+    case 'phone': return <svg {...iconProps}><path d="M7 3.5 4.8 5.2c-.9.8-.8 3.4.5 6.1 1.5 3.1 4.3 5.9 7.4 7.4 2.7 1.3 5.3 1.4 6.1.5l1.7-2.2-3.6-2.5-1.8 1.4c-1.9-.8-3.2-2.1-4-4l1.4-1.8z" /></svg>;
+    default: return null;
+  }
 }
 
 /**

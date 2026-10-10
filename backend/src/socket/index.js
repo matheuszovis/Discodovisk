@@ -149,7 +149,10 @@ module.exports = (io) => {
         }
 
         const isAuthor = message.author.toString() === socket.user._id.toString();
-        const canModerate = await Server.exists({
+        // Busca a permissão atual no banco para que promover/remover um admin
+        // tenha efeito imediato, mesmo se a pessoa já estava conectada.
+        const hasGlobalAdmin = Boolean(await User.exists({ _id: socket.user._id, isAdmin: true }));
+        const canModerate = hasGlobalAdmin || await Server.exists({
           channels: channelId,
           $or: [
             { owner: socket.user._id },

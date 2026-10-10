@@ -33,6 +33,7 @@ router.post('/login', authController.login);
 
 router.get('/users', auth, adminOnly, authController.listUsers);
 router.post('/users/:userId/reset-password', auth, adminOnly, authController.resetUserPassword);
+router.put('/users/:userId/admin', auth, adminOnly, authController.setUserAdmin);
 router.post('/change-password', auth, authController.changePassword);
 
 // GET /api/auth/me - Obter informações do usuário atual (requer autenticação)

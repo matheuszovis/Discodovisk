@@ -6,3 +6,9 @@
 .admin-message { margin-top: 18px; }
 .temporary-password { margin-top: 12px; padding: 14px; background: #202225; border-radius: 4px; }
 .temporary-password code { display: block; margin-top: 8px; color: #57f287; font-size: 18px; }
+.admin-role-actions { display: grid; gap: 7px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #4f545c; }
+.admin-role-actions strong { color: #fff; }
+.admin-role-actions p { margin: 0; color: #b9bbbe; font-size: 13px; }
+.admin-role-actions div { display: flex; flex-wrap: wrap; gap: 10px; }
+.admin-role-actions .admin-remove-button { background: #9c3345; }
+.admin-role-actions .admin-remove-button:hover { background: #bc4055; }

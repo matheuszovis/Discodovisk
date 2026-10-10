@@ -99,6 +99,38 @@ exports.resetUserPassword = async (req, res) => {
   }
 };
 
+// Concede ou remove a administracao global do aplicativo.
+exports.setUserAdmin = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'Usuario nao encontrado.' });
+
+    const isAdmin = Boolean(req.body?.isAdmin);
+    if (!isAdmin && user.isAdmin) {
+      const adminCount = await User.countDocuments({ isAdmin: true });
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: 'O ultimo administrador nao pode perder o acesso.' });
+      }
+    }
+
+    user.isAdmin = isAdmin;
+    await user.save();
+    res.json({
+      message: isAdmin ? 'Administrador concedido com sucesso.' : 'Administrador removido com sucesso.',
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        mustChangePassword: user.mustChangePassword
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao alterar administrador:', error);
+    res.status(500).json({ error: 'Erro ao alterar administrador.' });
+  }
+};
+
 exports.changePassword = async (req, res) => {
   try {
     const { password, currentPassword } = req.body;

@@ -598,9 +598,14 @@
 }
 
 .call-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   font-size: 19px;
   letter-spacing: -0.3px;
 }
+
+.call-header .call-control-icon { width: 22px; height: 22px; color: #fa5f7c; }
 
 .btn-close-call {
   width: 46px;
@@ -715,9 +720,10 @@
   height: 58px;
   border: 1px solid rgba(116, 143, 198, 0.32);
   background: linear-gradient(145deg, #27354d, #182336);
-  font-size: 23px;
   box-shadow: 0 5px 12px rgba(0, 0, 0, 0.2);
 }
+
+.control-btn .call-control-icon { width: 25px; height: 25px; }
 
 .control-btn:hover {
   background: linear-gradient(145deg, #354869, #253550);
@@ -737,14 +743,14 @@
 
 .audio-settings-gear {
   left: 18px;
-  bottom: 84px;
+  bottom: 116px;
   border: 1px solid rgba(116, 143, 198, 0.32);
   background: #172337;
 }
 
 .call-audio-settings {
   left: 76px;
-  bottom: 84px;
+  bottom: 116px;
   border-color: var(--dv-border);
   background: #121d2d;
 }
