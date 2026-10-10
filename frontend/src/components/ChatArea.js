@@ -65,35 +65,66 @@ function ChatArea({ channel, server }) {
     }
 
     let active = true;
+    const sortMembers = (members) => members
+      .map((member) => ({
+        _id: String(member.userId || member._id || ''),
+        username: member.username || 'Usuário',
+        avatar: member.avatar || '',
+        status: member.status || 'offline'
+      }))
+      .filter((member) => member._id)
+      .sort((first, second) => first.username.localeCompare(second.username, 'pt-BR'));
+
+    const replaceMembers = (members) => {
+      if (active) setAvailableMembers(sortMembers(members));
+    };
     const loadAvailableMembers = async () => {
       try {
         const response = await api.get(`/servers/${server._id}`);
         if (!active) return;
         const members = (response.data.server.members || [])
-          .map((member) => ({ ...member.user, status: member.user?.status || 'offline' }))
-          .filter((member) => member._id)
-          .sort((first, second) => first.username.localeCompare(second.username, 'pt-BR'));
-        setAvailableMembers(members);
+          .map((member) => ({
+            userId: member.user?._id,
+            username: member.user?.username,
+            avatar: member.user?.avatar,
+            status: member.user?.status || 'offline'
+          }));
+        replaceMembers(members);
       } catch (error) {
         console.error('Erro ao carregar membros disponíveis:', error);
       }
     };
 
-    loadAvailableMembers();
     const socket = getSocket();
+    const handleMemberList = ({ serverId, members }) => {
+      if (String(serverId) !== String(server._id)) return;
+      replaceMembers(members || []);
+    };
     const handleMemberStatus = (member) => {
-      if (member.serverId !== server._id) return;
+      if (String(member.serverId) !== String(server._id)) return;
       setAvailableMembers((current) => {
-        const remaining = current.filter((item) => item._id !== member.userId);
+        const remaining = current.filter((item) => item._id !== String(member.userId));
         if (!member.userId) return remaining;
-        return [...remaining, { _id: member.userId, username: member.username, avatar: member.avatar, status: member.status }]
-          .sort((first, second) => first.username.localeCompare(second.username, 'pt-BR'));
+        return sortMembers([...remaining, {
+          userId: member.userId,
+          username: member.username,
+          avatar: member.avatar,
+          status: member.status
+        }]);
       });
     };
-    socket?.on('server:member-status', handleMemberStatus);
+    if (socket) {
+      socket.on('server:members', handleMemberList);
+      socket.on('server:member-status', handleMemberStatus);
+      socket.emit('server:get-members', { serverId: server._id });
+    } else {
+      // Alternativa para o caso excepcional de Socket indisponivel.
+      loadAvailableMembers();
+    }
 
     return () => {
       active = false;
+      socket?.off('server:members', handleMemberList);
       socket?.off('server:member-status', handleMemberStatus);
     };
   }, [isGeneralChannel, server?._id]);

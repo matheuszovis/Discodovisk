@@ -58,6 +58,38 @@ module.exports = (io) => {
       console.log(`${socket.user.username} entrou no servidor ${serverId}`);
     });
 
+    // Envia a lista inicial. Os eventos de status seguintes atualizam apenas
+    // as mudancas ocorridas depois que a tela foi aberta.
+    socket.on('server:get-members', async ({ serverId } = {}) => {
+      try {
+        if (!serverId) return;
+
+        const server = await Server.findOne({
+          _id: serverId,
+          'members.user': socket.user._id
+        }).populate('members.user', 'username avatar status');
+
+        if (!server) {
+          socket.emit('server:members', { serverId: String(serverId), members: [] });
+          return;
+        }
+
+        const members = server.members
+          .filter((member) => member.user)
+          .map((member) => ({
+            userId: member.user._id.toString(),
+            username: member.user.username,
+            avatar: member.user.avatar,
+            status: member.user.status || 'offline'
+          }));
+
+        socket.emit('server:members', { serverId: String(serverId), members });
+      } catch (error) {
+        console.error('Erro ao carregar membros do servidor:', error);
+        socket.emit('server:members', { serverId: String(serverId || ''), members: [] });
+      }
+    });
+
     /**
      * Sair de um servidor
      */
