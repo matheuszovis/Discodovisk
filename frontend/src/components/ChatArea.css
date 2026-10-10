@@ -326,6 +326,37 @@
 .message-author { color: #f3f6ff; }
 .message-time { color: #8492ab; }
 .message-text { color: #d8e0ef; }
+.delete-message-button {
+  display: none;
+  width: 27px;
+  height: 27px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid rgba(133, 156, 205, 0.28);
+  border-radius: 8px;
+  background: rgba(33, 46, 70, 0.8);
+  color: #ff9ca9;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.message:hover .delete-message-button,
+.delete-message-button:focus-visible { display: inline-grid; place-items: center; }
+.delete-message-button:hover { border-color: rgba(255, 112, 132, 0.72); background: rgba(155, 45, 65, 0.35); }
+.message-action-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 20px 12px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 118, 137, 0.45);
+  border-radius: 10px;
+  color: #ffd7dc;
+  background: rgba(147, 43, 60, 0.22);
+  font-size: 13px;
+}
+.message-action-error button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 18px; }
 .date-separator::before, .date-separator::after { background: rgba(112, 139, 194, 0.23); }
 .date-separator span { color: #96a5bf; background: transparent; }
 

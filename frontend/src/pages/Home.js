@@ -18,6 +18,7 @@ function Home() {
   const [selectedServer, setSelectedServer] = useState(null);
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [callChannel, setCallChannel] = useState(null);
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
   const [savedAudioSettings, setSavedAudioSettings] = useState(readAudioSettings);
   const [activeCallParticipants, setActiveCallParticipants] = useState([]);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
@@ -107,11 +108,13 @@ function Home() {
   };
 
   const handleSelectChannel = (channel) => {
+    if (callChannel) setIsCallMinimized(true);
     setSelectedChannel(channel);
   };
 
   const handleOpenCall = (channel) => {
     setCallChannel(channel);
+    setIsCallMinimized(false);
   };
 
   const handleServerUpdated = (updatedServer) => {
@@ -428,9 +431,12 @@ function Home() {
           onClose={() => {
             console.log('🔒 Fechando chamada, limpando callChannel');
             setCallChannel(null);
+            setIsCallMinimized(false);
             setSavedAudioSettings(readAudioSettings());
             setActiveCallParticipants([]);
           }}
+          minimized={isCallMinimized}
+          onRestore={() => setIsCallMinimized(false)}
         />
       )}
     </div>

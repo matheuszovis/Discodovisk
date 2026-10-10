@@ -10,7 +10,7 @@ import Jukebox from './Jukebox';
  * Componente de chamada de vídeo/voz com compartilhamento de tela
  * Usa WebRTC (simple-peer) para comunicação P2P
  */
-function VideoCall({ channel, onClose, onParticipantsChange }) {
+function VideoCall({ channel, onClose, onParticipantsChange, minimized = false, onRestore }) {
   const [inCall, setInCall] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
@@ -1227,7 +1227,16 @@ function VideoCall({ channel, onClose, onParticipantsChange }) {
     + (isScreenSharing ? 1 : 0);
 
   return (
-    <div className="video-call-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.95)', zIndex: 9999 }}>
+    <div className={`video-call-overlay ${minimized ? 'is-minimized' : ''}`} style={{ backgroundColor: 'rgba(0, 0, 0, 0.95)', zIndex: 9999 }}>
+      <button
+        type="button"
+        className="minimized-call-trigger"
+        onClick={onRestore}
+        title="Voltar para a chamada"
+      >
+        <span>📞</span>
+        <span><strong>Chamada em andamento</strong><small>#{channel.name} · Clique para voltar</small></span>
+      </button>
       <div className="video-call-container">
         <div className="call-header">
           <h3>📞 {channel.name}</h3>

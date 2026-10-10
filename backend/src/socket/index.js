@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Message = require('../models/Message');
+const Server = require('../models/Server');
 
 const activeCalls = new Map();
 const activeScreenShares = new Map();
@@ -126,6 +127,47 @@ module.exports = (io) => {
       } catch (error) {
         console.error('Erro ao enviar mensagem:', error);
         socket.emit('error', { message: 'Erro ao enviar mensagem' });
+      }
+    });
+
+    /**
+     * Apagar mensagem de um canal. O servidor valida a permissão antes de
+     * remover: o autor pode apagar a própria mensagem; dono e administradores
+     * do servidor podem moderar qualquer mensagem do canal.
+     */
+    socket.on('message:delete', async ({ messageId, channelId } = {}, acknowledge = () => {}) => {
+      try {
+        if (!messageId || !channelId) {
+          acknowledge({ ok: false, error: 'Mensagem inválida.' });
+          return;
+        }
+
+        const message = await Message.findOne({ _id: messageId, channel: channelId, isDM: false });
+        if (!message) {
+          acknowledge({ ok: false, error: 'Mensagem não encontrada.' });
+          return;
+        }
+
+        const isAuthor = message.author.toString() === socket.user._id.toString();
+        const canModerate = await Server.exists({
+          channels: channelId,
+          $or: [
+            { owner: socket.user._id },
+            { members: { $elemMatch: { user: socket.user._id, role: { $in: ['owner', 'admin'] } } } }
+          ]
+        });
+
+        if (!isAuthor && !canModerate) {
+          acknowledge({ ok: false, error: 'Você não tem permissão para apagar esta mensagem.' });
+          return;
+        }
+
+        await message.deleteOne();
+        io.to(`channel:${channelId}`).emit('message:deleted', { messageId: message._id.toString(), channelId });
+        acknowledge({ ok: true });
+      } catch (error) {
+        console.error('Erro ao apagar mensagem:', error);
+        acknowledge({ ok: false, error: 'Não foi possível apagar a mensagem.' });
       }
     });
 

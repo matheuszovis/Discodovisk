@@ -536,6 +536,60 @@
   background: transparent;
 }
 
+.minimized-call-trigger {
+  display: none;
+}
+
+.video-call-overlay.is-minimized {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: 20px;
+  bottom: 20px;
+  width: min(320px, calc(100vw - 32px));
+  height: 66px;
+  min-height: 0;
+  overflow: visible;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #202d48, #111b2b) !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.42);
+}
+
+.video-call-overlay.is-minimized .video-call-container {
+  display: none;
+}
+
+.video-call-overlay.is-minimized .minimized-call-trigger {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 15px;
+  border: 0;
+  border-radius: inherit;
+  color: #f5f7ff;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.minimized-call-trigger > span:first-child {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #7081ff, #6559e8);
+  font-size: 18px;
+}
+
+.minimized-call-trigger > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.minimized-call-trigger strong { font-size: 13px; }
+.minimized-call-trigger small { overflow: hidden; color: #b9c5dd; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.video-call-overlay.is-minimized:hover { border-color: #8998ff; transform: translateY(-2px); }
+
 .call-header {
   min-height: 74px;
   padding: 16px 26px;
@@ -714,4 +768,5 @@
   .call-controls { min-height: 92px; gap: 9px; padding: 16px 8px; }
   .call-controls::before { height: 66px; border-radius: 34px; }
   .control-btn { width: 48px; height: 48px; font-size: 19px; }
+  .video-call-overlay.is-minimized { right: 12px; bottom: 12px; height: 60px; }
 }

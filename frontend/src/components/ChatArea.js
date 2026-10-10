@@ -13,6 +13,7 @@ function ChatArea({ channel, server }) {
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [typingUsers, setTypingUsers] = useState([]);
+  const [messageActionError, setMessageActionError] = useState('');
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const { user } = useAuth();
@@ -36,6 +37,7 @@ function ChatArea({ channel, server }) {
 
     // Escuta por novas mensagens
     socket.on('message:new', handleNewMessage);
+    socket.on('message:deleted', handleMessageDeleted);
     
     // Escuta quando alguém está digitando
     socket.on('typing:start', handleTypingStart);
@@ -43,6 +45,7 @@ function ChatArea({ channel, server }) {
 
     return () => {
       socket.off('message:new', handleNewMessage);
+      socket.off('message:deleted', handleMessageDeleted);
       socket.off('typing:start', handleTypingStart);
       socket.off('typing:stop', handleTypingStop);
     };
@@ -79,6 +82,43 @@ function ChatArea({ channel, server }) {
     if (message.channel === channel._id) {
       setMessages((prev) => [...prev, message]);
     }
+  };
+
+  const handleMessageDeleted = ({ messageId, channelId }) => {
+    if (channelId === channel._id) {
+      setMessages((prev) => prev.filter((message) => message._id !== messageId));
+    }
+  };
+
+  const getId = (value) => (value?._id || value || '').toString();
+
+  const canDeleteMessage = (message) => {
+    const currentUserId = getId(user?._id);
+    const isAuthor = getId(message.author) === currentUserId;
+    const member = server?.members?.find((item) => getId(item.user) === currentUserId);
+    const isServerModerator = ['owner', 'admin'].includes(member?.role)
+      || getId(server?.owner) === currentUserId;
+    return isAuthor || isServerModerator || Boolean(user?.isAdmin);
+  };
+
+  const handleDeleteMessage = (message) => {
+    if (!window.confirm('Apagar esta mensagem para todos? Esta ação não pode ser desfeita.')) return;
+
+    const socket = getSocket();
+    if (!socket) {
+      setMessageActionError('Não foi possível conectar para apagar a mensagem.');
+      return;
+    }
+
+    setMessageActionError('');
+    socket.emit('message:delete', {
+      messageId: message._id,
+      channelId: channel._id
+    }, (result) => {
+      if (!result?.ok) {
+        setMessageActionError(result?.error || 'Não foi possível apagar a mensagem.');
+      }
+    });
   };
 
   const handleTypingStart = ({ userId, username, channelId }) => {
@@ -228,6 +268,17 @@ function ChatArea({ channel, server }) {
                     <span className="message-time">
                       {formatTime(message.createdAt)}
                     </span>
+                    {canDeleteMessage(message) && (
+                      <button
+                        type="button"
+                        className="delete-message-button"
+                        onClick={() => handleDeleteMessage(message)}
+                        title="Apagar mensagem"
+                        aria-label={`Apagar mensagem de ${message.author.username}`}
+                      >
+                        🗑️
+                      </button>
+                    )}
                   </div>
                   <div className="message-text">
                     {message.content}
@@ -236,6 +287,13 @@ function ChatArea({ channel, server }) {
               </div>
             </React.Fragment>
           ))
+        )}
+
+        {messageActionError && (
+          <div className="message-action-error" role="alert">
+            <span>{messageActionError}</span>
+            <button type="button" onClick={() => setMessageActionError('')} aria-label="Fechar aviso">×</button>
+          </div>
         )}
         
         {/* Indicador de digitação */}
