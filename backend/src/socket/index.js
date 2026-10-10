@@ -45,8 +45,9 @@ module.exports = (io) => {
     // Adiciona o usuário à sua sala pessoal
     socket.join(`user:${socket.user._id}`);
 
-    // Atualiza status para online
-    updateUserStatus(io, socket.user._id, 'online');
+    // Mantém ausente/ocupado após reconexões; somente quem estava offline
+    // volta automaticamente como disponível ao abrir o aplicativo.
+    updateUserStatus(io, socket.user._id, socket.user.status === 'offline' ? 'online' : socket.user.status);
 
     /**
      * Entrar em um servidor
@@ -406,6 +407,7 @@ module.exports = (io) => {
      */
     socket.on('status:update', async (status) => {
       try {
+        if (!['online', 'away', 'busy', 'offline'].includes(status)) return;
         await updateUserStatus(io, socket.user._id, status);
         
         // Notifica todos os amigos sobre a mudança de status

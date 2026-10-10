@@ -138,6 +138,7 @@ export const AuthProvider = ({ children }) => {
       // Atualiza o avatar guardado na sessão Socket.io para quem já está em
       // uma chamada; não é preciso sair e entrar novamente no canal de voz.
       getSocket()?.emit('profile:refresh');
+      if (updates.status) getSocket()?.emit('status:update', updates.status);
 
       return { success: true };
     } catch (error) {

@@ -14,11 +14,13 @@ import packageInfo from '../../package.json';
  * Exibe servidores, canais e área de chat
  */
 function Home() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile, changePassword } = useAuth();
   const [selectedServer, setSelectedServer] = useState(null);
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [callChannel, setCallChannel] = useState(null);
   const [isCallMinimized, setIsCallMinimized] = useState(false);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
   const [savedAudioSettings, setSavedAudioSettings] = useState(readAudioSettings);
   const [activeCallParticipants, setActiveCallParticipants] = useState([]);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
@@ -35,7 +37,6 @@ function Home() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
-  const { updateProfile, changePassword } = useAuth();
 
   useEffect(() => {
     if (!window.electronAPI?.onUpdateAvailable) return undefined;
@@ -115,6 +116,25 @@ function Home() {
   const handleOpenCall = (channel) => {
     setCallChannel(channel);
     setIsCallMinimized(false);
+  };
+
+  const statusLabels = {
+    online: 'Disponível',
+    away: 'Ausente',
+    busy: 'Ocupado'
+  };
+
+  const handleStatusChange = async (status) => {
+    if (status === user?.status) {
+      setShowStatusMenu(false);
+      return;
+    }
+
+    setChangingStatus(true);
+    const result = await updateProfile({ status });
+    if (!result.success) setUpdateStatus(result.message || 'Não foi possível atualizar seu status.');
+    setChangingStatus(false);
+    setShowStatusMenu(false);
   };
 
   const handleServerUpdated = (updatedServer) => {
@@ -313,9 +333,34 @@ function Home() {
           />
           <div className="user-details">
             <span className="username">{user?.username}</span>
-            <span className={`status status-${user?.status}`}>
-              {user?.status}
-            </span>
+            <button
+              type="button"
+              className={`status status-selector status-${user?.status}`}
+              onClick={() => setShowStatusMenu((current) => !current)}
+              aria-expanded={showStatusMenu}
+              aria-haspopup="menu"
+              title="Alterar status"
+            >
+              {statusLabels[user?.status] || 'Disponível'}
+            </button>
+            {showStatusMenu && (
+              <div className="status-menu" role="menu" aria-label="Alterar status">
+                {Object.entries(statusLabels).map(([status, label]) => (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    key={status}
+                    className={`status-menu-option status-${status} ${user?.status === status ? 'selected' : ''}`}
+                    onClick={() => handleStatusChange(status)}
+                    disabled={changingStatus}
+                  >
+                    <span className="status-menu-dot" />
+                    <span>{label}</span>
+                    {user?.status === status && <b>✓</b>}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="user-actions">

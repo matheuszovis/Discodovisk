@@ -447,6 +447,45 @@
 .username { font-size: 15px; letter-spacing: 0.01em; }
 .status { display: flex; align-items: center; gap: 6px; font-size: 12px; text-transform: capitalize; }
 .status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
+.user-details { position: relative; }
+.status-selector { padding: 2px 0; border: 0; background: transparent; cursor: pointer; font-family: inherit; }
+.status-selector:hover { filter: brightness(1.2); }
+.status-selector::after { content: '⌄'; margin-left: 2px; font-size: 12px; line-height: 1; }
+.status-menu {
+  position: absolute;
+  z-index: 3100;
+  bottom: calc(100% + 10px);
+  left: -8px;
+  width: 196px;
+  padding: 7px;
+  border: 1px solid rgba(119, 146, 200, 0.42);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #1a263a, #101927);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.48);
+}
+.status-menu-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 9px;
+  color: #dde5f5;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.status-menu-option:hover, .status-menu-option.selected { background: rgba(91, 114, 166, 0.35); }
+.status-menu-option:disabled { cursor: wait; opacity: 0.65; }
+.status-menu-option b { margin-left: auto; color: #bfcaff; }
+.status-menu-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+.status-menu-option.status-online { color: #35d387; }
+.status-menu-option.status-away { color: #f1b843; }
+.status-menu-option.status-busy { color: #ed5369; }
 
 .btn-user-action,
 .btn-logout {
