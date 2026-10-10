@@ -517,3 +517,201 @@
 .call-audio-settings select { background: #202225; color: white; padding: 8px; border: 1px solid #777; width: 100%; border-radius: 6px; }
 .call-notice { padding: 12px 20px; color: #fff; background: #714820; }
 .call-notice button { float: right; }
+
+/* Novo palco da chamada: vídeos à esquerda, Jukebox em um card lateral e
+   controles destacados no rodapé. A estrutura e os eventos da call não mudam. */
+.video-call-overlay {
+  top: 10px;
+  left: 376px;
+  right: 10px;
+  bottom: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(99, 126, 181, 0.42);
+  border-radius: 21px;
+  background: radial-gradient(circle at 50% 0%, #1a2841 0%, #111a29 32%, #0b121e 100%) !important;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
+}
+
+.video-call-container {
+  background: transparent;
+}
+
+.call-header {
+  min-height: 74px;
+  padding: 16px 26px;
+  border-bottom: 1px solid rgba(107, 136, 193, 0.27);
+  background: linear-gradient(95deg, rgba(21, 31, 48, 0.96), rgba(28, 41, 64, 0.76));
+}
+
+.call-header h3 {
+  font-size: 19px;
+  letter-spacing: -0.3px;
+}
+
+.btn-close-call {
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(121, 146, 196, 0.46);
+  border-radius: 14px;
+  background: rgba(12, 20, 33, 0.45);
+  color: #f4f7ff;
+}
+
+.btn-close-call:hover {
+  background: rgba(75, 90, 126, 0.52);
+  border-color: #91a1e9;
+}
+
+.call-start {
+  background: radial-gradient(circle at 50% 35%, rgba(93, 109, 205, 0.16), transparent 42%);
+}
+
+.call-info h2 { font-size: 30px; }
+.call-info p { color: #b1bdd2; }
+
+.btn-join-call {
+  border-radius: 14px;
+  background: linear-gradient(135deg, #6679ff, #5b56e4);
+  box-shadow: 0 10px 24px rgba(75, 78, 220, 0.3);
+}
+
+.btn-join-call:hover { background: linear-gradient(135deg, #7788ff, #6a5cf1); }
+
+.call-stage {
+  background: radial-gradient(circle at 35% 18%, rgba(59, 82, 124, 0.16), transparent 38%);
+}
+
+.videos-grid {
+  grid-template-columns: repeat(auto-fit, minmax(238px, 1fr));
+  align-content: center;
+  justify-content: stretch;
+  gap: 18px;
+  padding: 26px 28px;
+}
+
+.video-wrapper {
+  border: 1px solid rgba(117, 144, 199, 0.43);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #1a263a, #111a27);
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.22);
+}
+
+.video-wrapper.speaking {
+  border-color: #639bff;
+  box-shadow: 0 0 0 2px rgba(91, 146, 255, 0.34), 0 12px 28px rgba(30, 97, 214, 0.22);
+}
+
+.video-wrapper.screen-expanded {
+  max-width: none;
+  min-height: min(58vh, 620px);
+}
+
+.video-off-overlay {
+  background: radial-gradient(circle at 50% 42%, #273852 0%, #172235 54%, #101824 100%);
+}
+
+.avatar-large {
+  width: 106px;
+  height: 106px;
+  border: 3px solid rgba(111, 139, 255, 0.72);
+  box-shadow: 0 0 0 7px rgba(93, 112, 227, 0.12), 0 12px 26px rgba(0, 0, 0, 0.32);
+}
+
+.video-label {
+  left: 12px;
+  bottom: 12px;
+  padding: 5px 10px;
+  border: 1px solid rgba(189, 206, 245, 0.14);
+  border-radius: 8px;
+  background: rgba(5, 10, 17, 0.76);
+  backdrop-filter: blur(5px);
+}
+
+.volume-control {
+  right: 12px;
+  bottom: 12px;
+  border-radius: 8px;
+  background: rgba(5, 10, 17, 0.76);
+}
+
+.call-controls {
+  position: relative;
+  min-height: 118px;
+  padding: 22px;
+  gap: 14px;
+  border-top: 1px solid rgba(107, 136, 193, 0.27);
+  background: linear-gradient(180deg, rgba(18, 28, 43, 0.84), rgba(10, 16, 26, 0.98));
+}
+
+.call-controls::before {
+  content: '';
+  position: absolute;
+  width: min(510px, calc(100% - 30px));
+  height: 78px;
+  border: 1px solid rgba(106, 134, 189, 0.36);
+  border-radius: 39px;
+  background: rgba(21, 31, 48, 0.86);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), inset 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.control-btn {
+  position: relative;
+  z-index: 1;
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(116, 143, 198, 0.32);
+  background: linear-gradient(145deg, #27354d, #182336);
+  font-size: 23px;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.2);
+}
+
+.control-btn:hover {
+  background: linear-gradient(145deg, #354869, #253550);
+}
+
+.control-btn.active,
+.control-btn.disconnect {
+  border-color: rgba(255, 131, 148, 0.42);
+  background: linear-gradient(145deg, #fa5268, #d93351);
+}
+
+.control-btn.disconnect:hover { background: linear-gradient(145deg, #ff687b, #e33a56); }
+
+.control-btn.active[title*="Parar"] {
+  background: linear-gradient(145deg, #38c989, #1f9f71);
+}
+
+.audio-settings-gear {
+  left: 18px;
+  bottom: 84px;
+  border: 1px solid rgba(116, 143, 198, 0.32);
+  background: #172337;
+}
+
+.call-audio-settings {
+  left: 76px;
+  bottom: 84px;
+  border-color: var(--dv-border);
+  background: #121d2d;
+}
+
+@media (max-width: 1180px) {
+  .videos-grid { padding: 18px; gap: 14px; }
+}
+
+@media (max-width: 900px) {
+  .video-call-overlay { left: 86px; top: 8px; right: 8px; bottom: 8px; }
+  .call-stage { flex-direction: column; overflow-y: auto; }
+  .videos-grid { flex: none; min-height: 360px; }
+}
+
+@media (max-width: 640px) {
+  .video-call-overlay { left: 6px; top: 6px; right: 6px; bottom: 6px; border-radius: 14px; }
+  .call-header { min-height: 60px; padding: 10px 15px; }
+  .call-header h3 { font-size: 16px; }
+  .btn-close-call { width: 38px; height: 38px; }
+  .videos-grid { grid-template-columns: 1fr; padding: 12px; }
+  .call-controls { min-height: 92px; gap: 9px; padding: 16px 8px; }
+  .call-controls::before { height: 66px; border-radius: 34px; }
+  .control-btn { width: 48px; height: 48px; font-size: 19px; }
+}

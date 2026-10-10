@@ -12,3 +12,102 @@
 .jukebox-volume input { width: 100%; accent-color: #5865f2; cursor: pointer; }
 
 @media (max-width: 768px) { .jukebox { flex: none; align-self: center; width: min(280px, calc(100% - 16px)); max-height: none; margin: 8px; } }
+
+/* Jukebox: card lateral compacto, sem competir com as transmissões. */
+.jukebox {
+  flex: 0 0 318px;
+  width: 318px;
+  margin: 14px 14px 14px 0;
+  padding: 15px;
+  border: 1px solid rgba(112, 139, 194, 0.42);
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(28, 40, 62, 0.98), rgba(15, 23, 36, 0.98));
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.26), inset 0 1px rgba(255, 255, 255, 0.035);
+}
+
+.jukebox-heading {
+  gap: 8px;
+  margin-bottom: 13px;
+}
+
+.jukebox-heading > span {
+  color: #8d8dff;
+  font-size: 25px;
+  filter: drop-shadow(0 0 7px rgba(121, 114, 255, 0.55));
+}
+
+.jukebox-heading strong {
+  font-size: 17px;
+  letter-spacing: -0.2px;
+}
+
+.jukebox-search {
+  gap: 7px;
+}
+
+.jukebox-search input {
+  padding: 10px 11px;
+  border-color: #344868;
+  border-radius: 10px;
+  color: #eef3ff;
+  background: rgba(7, 12, 21, 0.72);
+}
+
+.jukebox-search input:focus {
+  outline: none;
+  border-color: #7b83ff;
+  box-shadow: 0 0 0 3px rgba(112, 124, 255, 0.15);
+}
+
+.jukebox button {
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6a7cff, #6457e9);
+  box-shadow: 0 5px 13px rgba(72, 76, 214, 0.25);
+}
+
+.jukebox button:hover {
+  background: linear-gradient(135deg, #7d8cff, #7164f2);
+}
+
+.jukebox-result {
+  border: 1px solid transparent;
+  border-radius: 10px !important;
+  background: rgba(48, 66, 97, 0.56) !important;
+}
+
+.jukebox-result:hover {
+  border-color: rgba(127, 145, 255, 0.35);
+  background: rgba(61, 81, 119, 0.76) !important;
+}
+
+.jukebox-now-playing {
+  padding: 10px;
+  border: 1px solid rgba(111, 138, 192, 0.2);
+  border-radius: 11px;
+  background: rgba(8, 14, 24, 0.38);
+}
+
+.jukebox-now-info strong {
+  font-size: 13px;
+}
+
+.jukebox-actions .jukebox-listen {
+  background: #238566;
+}
+
+.jukebox-player {
+  height: 158px;
+  border-radius: 10px;
+}
+
+.jukebox-queue {
+  border-top-color: rgba(112, 139, 194, 0.22);
+}
+
+@media (max-width: 1180px) {
+  .jukebox { flex-basis: 280px; width: 280px; }
+}
+
+@media (max-width: 820px) {
+  .jukebox { flex: none; width: min(360px, calc(100% - 28px)); margin: 8px auto 16px; }
+}

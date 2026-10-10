@@ -25,24 +25,48 @@ code {
   overflow: hidden;
 }
 
+:root {
+  --dv-canvas: #080d15;
+  --dv-rail: #0d1420;
+  --dv-panel: #111a28;
+  --dv-panel-raised: #172235;
+  --dv-panel-hover: #202e45;
+  --dv-border: #31425f;
+  --dv-border-soft: rgba(121, 151, 205, 0.22);
+  --dv-text: #f3f6ff;
+  --dv-muted: #aab5c9;
+  --dv-accent: #6478ff;
+  --dv-accent-strong: #7a5cff;
+  --dv-danger: #f0445e;
+  --dv-online: #32d583;
+}
+
+body {
+  min-width: 320px;
+  color: var(--dv-text);
+  background: var(--dv-canvas);
+}
+
 /* Scrollbar global */
 ::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #2e3136;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #202225;
-  border: 3px solid #2e3136;
-  border-radius: 7px;
+  background: rgba(123, 145, 180, 0.36);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #1a1c1f;
+  background: rgba(146, 170, 210, 0.62);
+  background-clip: padding-box;
 }
 
 /* Animações globais */
