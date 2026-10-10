@@ -165,7 +165,6 @@ function Jukebox({ channelId, active }) {
       <div className="jukebox-heading">
         <span aria-hidden="true">♫</span>
         <strong>Jukebox</strong>
-        <small>sincronizada no canal</small>
       </div>
 
       <form className="jukebox-search" onSubmit={search}>
