@@ -486,6 +486,8 @@
 .status-menu-option.status-online { color: #35d387; }
 .status-menu-option.status-away { color: #f1b843; }
 .status-menu-option.status-busy { color: #ed5369; }
+.status-menu-option.status-invisible { color: #9aa6ba; }
+.status-invisible { color: #9aa6ba; }
 
 .btn-user-action,
 .btn-logout {

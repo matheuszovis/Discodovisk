@@ -360,6 +360,8 @@
 .available-member-avatar i { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border: 2px solid #162238; border-radius: 50%; background: #35d387; box-shadow: 0 0 8px rgba(53, 211, 135, 0.72); }
 .available-member-avatar i.status-away { background: #f1b843; box-shadow: 0 0 8px rgba(241, 184, 67, 0.65); }
 .available-member-avatar i.status-busy { background: #ed5369; box-shadow: 0 0 8px rgba(237, 83, 105, 0.65); }
+.available-member-avatar i.status-offline, .available-member-avatar i.status-invisible { background: #778399; box-shadow: none; }
+.available-member.status-offline, .available-member.status-invisible { color: #98a3b6; }
 .available-members-empty { margin: 8px; color: #8d9ab1; font-size: 12px; line-height: 1.45; text-align: center; }
 
 .chat-header {

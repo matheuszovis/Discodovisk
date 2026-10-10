@@ -71,7 +71,7 @@ function ChatArea({ channel, server }) {
         if (!active) return;
         const members = (response.data.server.members || [])
           .map((member) => ({ ...member.user, status: member.user?.status || 'offline' }))
-          .filter((member) => member._id && ['online', 'away', 'busy'].includes(member.status))
+          .filter((member) => member._id)
           .sort((first, second) => first.username.localeCompare(second.username, 'pt-BR'));
         setAvailableMembers(members);
       } catch (error) {
@@ -85,7 +85,7 @@ function ChatArea({ channel, server }) {
       if (member.serverId !== server._id) return;
       setAvailableMembers((current) => {
         const remaining = current.filter((item) => item._id !== member.userId);
-        if (!['online', 'away', 'busy'].includes(member.status)) return remaining;
+        if (!member.userId) return remaining;
         return [...remaining, { _id: member.userId, username: member.username, avatar: member.avatar, status: member.status }]
           .sort((first, second) => first.username.localeCompare(second.username, 'pt-BR'));
       });
@@ -361,11 +361,11 @@ function ChatArea({ channel, server }) {
       {isGeneralChannel && (
         <aside className="available-members" aria-label="Membros disponíveis">
           <div className="available-members-header">
-            <span>Disponíveis</span><strong>{availableMembers.length}</strong>
+            <span>Membros</span><strong>{availableMembers.length}</strong>
           </div>
           <div className="available-members-list">
             {availableMembers.length ? availableMembers.map((member) => (
-              <div className={`available-member status-${member.status}`} key={member._id} title={`${member.username} está ${member.status === 'online' ? 'disponível' : member.status === 'away' ? 'ausente' : 'ocupado'}`}>
+              <div className={`available-member status-${member.status}`} key={member._id} title={`${member.username} está ${member.status === 'online' ? 'disponível' : member.status === 'away' ? 'ausente' : member.status === 'busy' ? 'ocupado' : 'offline'}`}>
                 <span className="available-member-avatar">
                   <img src={member.avatar || 'https://via.placeholder.com/64'} alt="" />
                   <i className={`member-status-dot status-${member.status}`} aria-label={member.status} />

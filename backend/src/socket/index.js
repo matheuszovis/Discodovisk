@@ -407,7 +407,7 @@ module.exports = (io) => {
      */
     socket.on('status:update', async (status) => {
       try {
-        if (!['online', 'away', 'busy', 'offline'].includes(status)) return;
+        if (!['online', 'away', 'busy', 'offline', 'invisible'].includes(status)) return;
         await updateUserStatus(io, socket.user._id, status);
         
         // Notifica todos os amigos sobre a mudança de status

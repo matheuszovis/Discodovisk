@@ -121,7 +121,8 @@ function Home() {
   const statusLabels = {
     online: 'Disponível',
     away: 'Ausente',
-    busy: 'Ocupado'
+    busy: 'Ocupado',
+    invisible: 'Invisível'
   };
 
   const handleStatusChange = async (status) => {

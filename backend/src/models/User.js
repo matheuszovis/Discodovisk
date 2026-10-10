@@ -33,7 +33,7 @@ const userSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['online', 'offline', 'away', 'busy'],
+    enum: ['online', 'offline', 'away', 'busy', 'invisible'],
     default: 'offline'
   },
   isAdmin: {
