@@ -304,6 +304,7 @@ function Home() {
           onSelectChannel={handleSelectChannel}
           onOpenCall={handleOpenCall}
           onServerUpdated={handleServerUpdated}
+          currentUser={user}
           activeCallChannel={callChannel}
           activeCallParticipants={activeCallParticipants}
         />

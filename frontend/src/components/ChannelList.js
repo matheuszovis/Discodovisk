@@ -13,7 +13,8 @@ function ChannelList({
   onOpenCall,
   activeCallChannel,
   activeCallParticipants,
-  onServerUpdated
+  onServerUpdated,
+  currentUser
 }) {
   const [channels, setChannels] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -23,6 +24,16 @@ function ChannelList({
   const [voiceParticipants, setVoiceParticipants] = useState({});
   const [savingServerIcon, setSavingServerIcon] = useState(false);
   const serverIconInputRef = useRef(null);
+  const currentUserId = String(currentUser?.id || currentUser?._id || '');
+  const ownerId = String(server?.owner?._id || server?.owner || '');
+  const membership = server?.members?.find((member) => (
+    String(member.user?._id || member.user || '') === currentUserId
+  ));
+  const canEditServerIcon = Boolean(
+    currentUser?.isAdmin
+    || ownerId === currentUserId
+    || ['owner', 'admin'].includes(membership?.role)
+  );
 
   const handleServerIconChange = (event) => {
     const file = event.target.files?.[0];
@@ -229,6 +240,8 @@ function ChannelList({
     <div className="channel-list">
       <div className="server-header">
         <h3>{server?.name}</h3>
+        {canEditServerIcon && (
+          <>
         <button
           type="button"
           className="btn-server-icon"
@@ -245,6 +258,8 @@ function ChannelList({
           accept="image/png,image/jpeg,image/webp,image/gif"
           onChange={handleServerIconChange}
         />
+          </>
+        )}
       </div>
 
       <div className="channels-container">

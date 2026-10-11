@@ -117,7 +117,11 @@ exports.updateServer = async (req, res) => {
       m => m.user.toString() === req.user._id.toString()
     );
 
-    if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
+    const isOwner = server.owner.toString() === req.user._id.toString();
+    const isServerAdmin = member && (member.role === 'owner' || member.role === 'admin');
+    const canEditServer = isOwner || isServerAdmin || req.user.isAdmin;
+
+    if (!canEditServer) {
       return res.status(403).json({ error: 'Sem permissão.' });
     }
 
