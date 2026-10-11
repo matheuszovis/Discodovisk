@@ -143,6 +143,7 @@ function Home() {
   };
 
   const handleOpenProfileSettings = () => {
+    if (callChannel) setIsCallMinimized(true);
     setAvatarUrl(user?.avatar || '');
     setProfileError('');
     setCurrentPassword('');
